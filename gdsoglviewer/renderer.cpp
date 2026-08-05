@@ -29,6 +29,12 @@
 #include "gds_globals.h"
 #include "renderer.h"
 
+/* Actual emitted-vertex bounds; see Renderer::addVertex. */
+float gds3d_vmin[3] = { 1e30f, 1e30f, 1e30f };
+float gds3d_vmax[3] = { -1e30f, -1e30f, -1e30f };
+unsigned long gds3d_vcount = 0;
+
+
 #if defined(WIN32)
 	#include "glext.h"
 #elif !defined(__APPLE__)
@@ -733,6 +739,20 @@ Renderer::getCurIndex()
 unsigned int
 Renderer::addVertex(GLfloat x, GLfloat y, GLfloat z)
 {
+    /* Ground truth for headless framing: every vertex that reaches the GPU
+       passes through here, so this is the one place that cannot disagree with
+       what is actually drawn. Compare against GDSObject::GetTotalBoundary() --
+       if they differ, the boundary is in a different space/scale from the
+       geometry, which is exactly the sort of thing that makes an auto-fit aim
+       at coordinates the model does not occupy. */
+    if (x < gds3d_vmin[0]) gds3d_vmin[0] = x;
+    if (y < gds3d_vmin[1]) gds3d_vmin[1] = y;
+    if (z < gds3d_vmin[2]) gds3d_vmin[2] = z;
+    if (x > gds3d_vmax[0]) gds3d_vmax[0] = x;
+    if (y > gds3d_vmax[1]) gds3d_vmax[1] = y;
+    if (z > gds3d_vmax[2]) gds3d_vmax[2] = z;
+    gds3d_vcount++;
+
     if(numDrawverts >= Renderer_SIZE-1) {
 		v_printf(1, "numDrawverts = %d \n", numDrawverts);
 		forceFlush();

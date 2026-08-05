@@ -54,7 +54,6 @@ private:
 	GLfloat drawfps;
 	float tt;
 	float _fps;
-	GLfloat _rx, _ry;
 	GLfloat _vrx, _vry;
 	GLfloat _vx, _vy, _vz; // Constant movement
 	GLfloat _vx2, _vy2, _vz2; // Smooth declining movement
@@ -74,6 +73,13 @@ private:
 public:
 	GLfloat _xmin,_xmax,_ymin,_ymax; /* the bounding box for the gds features, FIXME: include z values */
 	GLfloat _x, _y, _z;
+
+	/* Camera rotation. Moved here from private (visibility only, same types,
+	   same order relative to _vrx/_vry) so a headless driver can set a view
+	   without synthesising mouse drags -- see linux_egl/egl_main.cpp. The
+	   interactive X11 path is unaffected: it only ever touches these through
+	   the same member functions as before. */
+	GLfloat _rx, _ry;
 
 	// Mouse control
 	bool _mouse_control; // Left button

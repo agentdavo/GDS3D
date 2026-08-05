@@ -1,0 +1,886 @@
+# GDS3D process definition for GlobalFoundries gf180mcuD (5LM_1TM_11K).
+#
+# HEIGHTS ARE NOT INVENTED. Every Height/Thickness below is taken from the
+# PDK's own KLayout 2.5D view definition:
+#
+#   libs.tech/klayout/tech/d25/gf180mcu.lyd25
+#
+# which gives, in nm:
+#
+#   Poly2      0    +200
+#   Contact    0    +860     (not over poly; over poly it is 200 +660)
+#   Metal1     860  +550
+#   Via1      1410  +600
+#   Metal2    2010  +550
+#   Via2      2560  +600
+#   Metal3    3160  +550
+#   Via3      3710  +600
+#   Metal4    4310  +550
+#   Via4      4860  +900     (not under FuseTop; under it, 4902 +563)
+#   FuseTop   4902  +295     (MIM-B top plate, between M4 and M5)
+#   Metal5    5760  +1192.5
+#
+# Metal5's 1192.5 nm agrees with the 1.19 um quoted for the D variant's
+# 11 kA top metal, so this is the real stack and not a generic guess.
+#
+# Layer/datatype numbers are from DRM section 4.1. Watch the two easy
+# mis-reads: Via3 is 40/0 and Via4 is 41/0 -- they are NOT in numeric order
+# with the metals -- and MetalTop 53/0 / Via5 82/0 belong to the 6LM option
+# and are absent on D, so they are listed with Show: 0.
+#
+# Usage:
+#   linux/GDS3D -p techfiles/gf180mcuD.txt -i <file.gds> [-t <topcell>]
+
+# Substrate. Height/Thickness are DELIBERATELY 2 um, not the 10 um the sky130
+# techfile uses: the exploded view translates every layer by
+# 1.5 * Height * Unitu * fraction, so a -10000 nm substrate is flung ten times
+# further than Metal5 and swamps the bounding box, wrecking any auto-fit. Two
+# microns still reads as a slab under the die without dominating.
+LayerStart: Substrate
+Layer: 255
+Datatype: 0
+Height: -2000.0
+Thickness: 2000.0
+Red: 0.15
+Green: 0.15
+Blue: 0.15
+Filter: 0.5
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: NWell
+Layer: 21
+Datatype: 0
+Height: -600.0
+Thickness: 600.0
+Red: 0.45
+Green: 0.35
+Blue: 0.10
+Filter: 0.0
+Metal: 0
+Shortkey: 0
+Show: 1
+LayerEnd
+
+LayerStart: LVPWELL
+Layer: 204
+Datatype: 0
+Height: -600.0
+Thickness: 600.0
+Red: 0.20
+Green: 0.25
+Blue: 0.40
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: DNWELL
+Layer: 12
+Datatype: 0
+Height: -1200.0
+Thickness: 600.0
+Red: 0.30
+Green: 0.20
+Blue: 0.35
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: COMP
+Layer: 22
+Datatype: 0
+Height: -200.0
+Thickness: 200.0
+Red: 0.18
+Green: 0.48
+Blue: 0.31
+Filter: 0.0
+Metal: 0
+Shortkey: 1
+Show: 1
+LayerEnd
+
+LayerStart: Poly2
+Layer: 30
+Datatype: 0
+Height: 0.0
+Thickness: 200.0
+Red: 0.69
+Green: 0.19
+Blue: 0.38
+Filter: 0.0
+Metal: 0
+Shortkey: 2
+Show: 1
+LayerEnd
+
+LayerStart: Contact
+Layer: 33
+Datatype: 0
+Height: 0.0
+Thickness: 860.0
+Red: 0.48
+Green: 0.48
+Blue: 0.48
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Metal1
+Layer: 34
+Datatype: 0
+Height: 860.0
+Thickness: 550.0
+Red: 0.24
+Green: 0.50
+Blue: 0.84
+Filter: 0.0
+Metal: 1
+Shortkey: 3
+Show: 1
+LayerEnd
+
+LayerStart: Via1
+Layer: 35
+Datatype: 0
+Height: 1410.0
+Thickness: 600.0
+Red: 0.60
+Green: 0.65
+Blue: 0.69
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Metal2
+Layer: 36
+Datatype: 0
+Height: 2010.0
+Thickness: 550.0
+Red: 0.13
+Green: 0.64
+Blue: 0.64
+Filter: 0.0
+Metal: 1
+Shortkey: 4
+Show: 1
+LayerEnd
+
+LayerStart: Via2
+Layer: 38
+Datatype: 0
+Height: 2560.0
+Thickness: 600.0
+Red: 0.60
+Green: 0.65
+Blue: 0.69
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Metal3
+Layer: 42
+Datatype: 0
+Height: 3160.0
+Thickness: 550.0
+Red: 0.88
+Green: 0.63
+Blue: 0.10
+Filter: 0.0
+Metal: 1
+Shortkey: 5
+Show: 1
+LayerEnd
+
+# Via3 is GDS 40, NOT 43 -- the via numbers are out of order with the metals.
+LayerStart: Via3
+Layer: 40
+Datatype: 0
+Height: 3710.0
+Thickness: 600.0
+Red: 0.73
+Green: 0.63
+Blue: 0.42
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Metal4
+Layer: 46
+Datatype: 0
+Height: 4310.0
+Thickness: 550.0
+Red: 0.90
+Green: 0.40
+Blue: 0.30
+Filter: 0.0
+Metal: 1
+Shortkey: 6
+Show: 1
+LayerEnd
+
+# MIM-B top plate sits between Metal4 and Metal5 on gf180mcuD.
+LayerStart: FuseTop (MIM)
+Layer: 75
+Datatype: 0
+Height: 4902.0
+Thickness: 295.0
+Red: 0.95
+Green: 0.85
+Blue: 0.30
+Filter: 0.0
+Metal: 1
+Shortkey: 8
+Show: 1
+LayerEnd
+
+# Via4 is GDS 41. lyd25 splits it: 900 nm normally, 563 nm where it lands on
+# FuseTop. GDS3D has one height per layer, so the common case is used.
+LayerStart: Via4
+Layer: 41
+Datatype: 0
+Height: 4860.0
+Thickness: 900.0
+Red: 0.79
+Green: 0.54
+Blue: 0.48
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Metal5
+Layer: 81
+Datatype: 0
+Height: 5760.0
+Thickness: 1192.5
+Red: 0.56
+Green: 0.31
+Blue: 0.85
+Filter: 0.0
+Metal: 1
+Shortkey: 7
+Show: 1
+LayerEnd
+
+# Bond pad opening. Medium grey, not near-black: this is the exposed aluminium
+# under the passivation opening and it sits on top of the stack, so a dark
+# colour just reads as a hole against the black background.
+LayerStart: Pad
+Layer: 37
+Datatype: 0
+Height: 6952.5
+Thickness: 300.0
+Red: 0.62
+Green: 0.63
+Blue: 0.66
+Filter: 0.0
+Metal: 1
+Shortkey: 9
+Show: 1
+LayerEnd
+
+# --- Present in the DRM layer table but NOT in the D stack -------------------
+# Via5 and MetalTop belong to the 6LM option. Kept for reference, not drawn.
+
+LayerStart: Via5 (6LM only)
+Layer: 82
+Datatype: 0
+Height: 6952.5
+Thickness: 600.0
+Red: 0.60
+Green: 0.65
+Blue: 0.69
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: MetalTop (6LM only)
+Layer: 53
+Datatype: 0
+Height: 7552.5
+Thickness: 900.0
+Red: 0.70
+Green: 0.70
+Blue: 0.75
+Filter: 0.0
+Metal: 1
+Show: 0
+LayerEnd
+
+
+# --- Implants and FEOL marks --------------------------------------------------
+# lyd25 does NOT define Z for these (it covers Poly2, Contact, Metal1-5, Via1-4
+# and FuseTop only), so the heights below are chosen to place them sensibly in
+# the substrate rather than taken from the PDK. They sit just under COMP
+# (-200..0) so both stay visible.
+
+LayerStart: Nplus
+Layer: 32
+Datatype: 0
+Height: -280.0
+Thickness: 80.0
+Red: 0.24
+Green: 0.55
+Blue: 0.78
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+LayerStart: Pplus
+Layer: 31
+Datatype: 0
+Height: -280.0
+Thickness: 80.0
+Red: 0.78
+Green: 0.35
+Blue: 0.35
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+# Salicide block: marks unsalicided poly/active. Real mask (DRM L68).
+LayerStart: SAB
+Layer: 49
+Datatype: 0
+Height: 200.0
+Thickness: 60.0
+Red: 0.85
+Green: 0.85
+Blue: 0.40
+Filter: 0.0
+Metal: 0
+Show: 1
+LayerEnd
+
+# 6V gate oxide. THIS is what marks the thick-oxide devices in a 5V I/O cell,
+# so it is worth being able to see -- but it blankets most of the cell, which
+# hides everything under it. Show: 0 by default; set Show: 1 (or use its
+# shortkey in the interactive viewer) when you specifically want it.
+LayerStart: Dualgate
+Layer: 55
+Datatype: 0
+Height: -60.0
+Thickness: 60.0
+Red: 0.95
+Green: 0.55
+Blue: 0.15
+Filter: 0.5
+Metal: 0
+Shortkey: 4
+Show: 0
+LayerEnd
+
+# --- Marking / LVS layers -----------------------------------------------------
+# Present in this library's GDS but NOT physical: rendering them as solid slabs
+# would be misleading. Listed so the layer set is complete and nothing is
+# silently dropped; flip Show to 1 to inspect one.
+
+LayerStart: PR_bndry
+Layer: 0
+Datatype: 0
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: ESD_MK
+Layer: 24
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.90
+Green: 0.30
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Latchup_MK
+Layer: 137
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.80
+Green: 0.50
+Blue: 0.20
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: DIODE_MK
+Layer: 115
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.40
+Green: 0.80
+Blue: 0.40
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: RES_MK
+Layer: 110
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.70
+Green: 0.40
+Blue: 0.80
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: MOS_CAP_MK
+Layer: 166
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.30
+Green: 0.70
+Blue: 0.80
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVS_Source
+Layer: 100
+Datatype: 8
+Height: 0.0
+Thickness: 10.0
+Red: 0.50
+Green: 0.50
+Blue: 0.90
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVS_IO
+Layer: 119
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.90
+Green: 0.90
+Blue: 0.30
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+# 23/5 appears in gf180mcu_fd_io.gds (40 shapes) but is NOT in the DRM 4.1
+# drawn/marking table. Foundry-internal; drawn nowhere, listed so the diff
+# between GDS and techfile comes out empty.
+LayerStart: Unknown_23_5
+Layer: 23
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.50
+Green: 0.50
+Blue: 0.50
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+
+# --- Labels and remaining DRM markers ----------------------------------------
+# LABEL layers (*_Label, datatype 10) carry text placements, not geometry --
+# DRM 4.1 says they "are not supposed to be part of the active circuits" -- so
+# they are declared for completeness and left Show: 0. Found in gf180mcu_ocd_io
+# (Metal2_Label 36/10, Metal4_Label 46/10) which the PLL slot profiles use.
+
+LayerStart: COMP_Label
+Layer: 22
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Poly2_Label
+Layer: 30
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Metal1_Label
+Layer: 34
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Metal2_Label
+Layer: 36
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Metal3_Label
+Layer: 42
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Metal4_Label
+Layer: 46
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Metal5_Label
+Layer: 81
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: MetalTop_Label
+Layer: 53
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: V5_XTOR
+Layer: 112
+Datatype: 1
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: PROBE_MK
+Layer: 13
+Datatype: 17
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: CAP_MK
+Layer: 117
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: IND_MK
+Layer: 151
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: NDMY
+Layer: 111
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: PMNDMY
+Layer: 152
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: DRC_BJT
+Layer: 127
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVS_BJT
+Layer: 118
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVS_RF
+Layer: 100
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVS_Drain
+Layer: 100
+Datatype: 7
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: OPC_drc
+Layer: 124
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: SramCore
+Layer: 108
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: ESD
+Layer: 24
+Datatype: 0
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: NAT
+Layer: 5
+Datatype: 0
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+
+# --- Well labels and eFuse marks ---------------------------------------------
+# Nwell/LVPWELL labels follow the same datatype-10 label convention as the metal
+# labels above (found in gf180mcu_as_sc_mcu7t3v3). EFUSE_MK / PLFUSE come from
+# the gf180mcu_re_efuse macros. All marking/label layers: declared, not drawn.
+
+LayerStart: Nwell_Label
+Layer: 21
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: LVPWELL_Label
+Layer: 204
+Datatype: 10
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: EFUSE_MK
+Layer: 80
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: PLFUSE
+Layer: 125
+Datatype: 5
+Height: 0.0
+Thickness: 10.0
+Red: 0.60
+Green: 0.60
+Blue: 0.60
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+# --- Markers ----------------------------------------------------------------
+
+LayerStart: GUARD_RING_MK
+Layer: 167
+Datatype: 5
+Height: 0.0
+Thickness: 7000.0
+Red: 0.90
+Green: 0.20
+Blue: 0.20
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd
+
+LayerStart: Border
+Layer: 63
+Datatype: 0
+Height: 0.0
+Thickness: 50.0
+Red: 0.50
+Green: 0.50
+Blue: 0.50
+Filter: 0.0
+Metal: 0
+Show: 0
+LayerEnd

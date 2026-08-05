@@ -64,6 +64,12 @@ FRUSTUM frustum; // For bounding box culling
 MATRIX4X4 view; // Modelview matrix
 GLint cull_type;
 float exploded_fraction = 0.0f;
+
+/* When set, RenderList skips its screen-space level-of-detail entirely: no
+   layer is culled for being small, and no layer is alpha-faded toward
+   invisible. For offscreen rendering you want the whole database drawn, not an
+   interactive approximation of it. See the use site in RenderList. */
+bool gds3d_force_full_detail = false;
 float exploded_accel = 0.0f;
 bool exploded_view = false;
 float color_scale = 1.0f;
@@ -495,7 +501,19 @@ void GDSObject_ogl::RenderList(MATRIX4X4 object_view, float Quality, bool Update
 		// Visibility of small objects
 		float zrel;
 
-		if(Quality >= 10.0 )
+		if(gds3d_force_full_detail)
+		{
+			/* zrel is a screen-space smallness measure: it grows with distance
+			   and shrinks with the layer's largest feature, so thin layers get
+			   dropped ("continue") or faded to alpha 0 as you pull back. That
+			   is right for interactive navigation and wrong for a render --
+			   measured on gf180mcu_fd_io__bi_24t, Metal5 and Metal4 silently
+			   disappeared at 1024x768 while showing fine at 640x480, purely
+			   because the projected size crossed this threshold. Zero means
+			   never cull and never fade. */
+			zrel = 0.0f;
+		}
+		else if(Quality >= 10.0 )
 		{
 			zrel = (0.00075f/4.0f) / fabs(layer_list[i].largest_dimension / distance);
 			if(zrel > 1.0f)
@@ -507,7 +525,7 @@ void GDSObject_ogl::RenderList(MATRIX4X4 object_view, float Quality, bool Update
 			if(zrel > 1.0f*Quality/10.0)
 				continue;
 		}
-        if(zrel>0.5f*Quality / 10.0)
+        if(!gds3d_force_full_detail && zrel>0.5f*Quality / 10.0)
         {
             alpha = alpha - (zrel-0.5f)*2.0f;
             if(alpha < 0.0f)

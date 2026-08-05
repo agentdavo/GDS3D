@@ -714,6 +714,26 @@ void GDSParse_ogl::gl_draw_world(int width, int height, bool HQ)
 	glLoadMatrixf((GLfloat*) &view);
 	worldview = view;
 
+	/* Headless diagnostic: dump the view matrix AT THE MOMENT IT IS LOADED,
+	   plus the camera state it was built from. Reading GL state after the fact
+	   returns whatever the 2D overlay left behind, so this is the only place
+	   the real matrix can be observed. Enabled with GDS3D_DUMPVIEW=1. */
+	{
+		static int dump = -1;
+		if (dump < 0) dump = getenv("GDS3D_DUMPVIEW") ? 1 : 0;
+		if (dump) {
+			static int n = 0;
+			if (n++ < 2) {
+				const GLfloat *vv = (const GLfloat *)&view;
+				fprintf(stderr, "[gl_draw_world] rx=%.2f ry=%.2f pos=(%.2f,%.2f,%.2f) "
+				        "_units=%g\n", _rx, _ry, _x, _y, _z, (double)_units);
+				for (int r = 0; r < 4; r++)
+					fprintf(stderr, "   view row%d  %8.3f %8.3f %8.3f %8.3f\n", r,
+					        vv[0*4+r], vv[1*4+r], vv[2*4+r], vv[3*4+r]);
+			}
+		}
+	}
+
 	// Find the top cell and draw
 	total_tris = 0;
 
