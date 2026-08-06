@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GF180MCU SRAM bitcells — 5 V foundry, 3.3 V FTL, and the 8T array cell</title>
+<style>
+:root{
+  --bg:#f7f7f5; --fg:#16181d; --dim:#5c6472; --line:#dfe0dc; --card:#fff;
+  --accent:#b1541f; --good:#2f7d4f;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#101216;--fg:#e6e8ec;--dim:#9aa3b2;--line:#272b33;--card:#171a20;
+        --accent:#e8834a;--good:#5ec98a;}
+}
+:root[data-theme="dark"]{--bg:#101216;--fg:#e6e8ec;--dim:#9aa3b2;--line:#272b33;
+  --card:#171a20;--accent:#e8834a;--good:#5ec98a;}
+:root[data-theme="light"]{--bg:#f7f7f5;--fg:#16181d;--dim:#5c6472;--line:#dfe0dc;
+  --card:#fff;--accent:#b1541f;--good:#2f7d4f;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+  -webkit-text-size-adjust:100%}
+.wrap{max-width:1240px;margin:0 auto;padding:2.5rem 1.25rem 5rem}
+h1{font-size:1.9rem;line-height:1.25;margin:0 0 .4rem;letter-spacing:-.02em}
+h2{font-size:1.15rem;margin:2.5rem 0 .75rem;letter-spacing:-.01em}
+.lede{color:var(--dim);margin:0 0 2rem;font-size:1.05rem}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+.pair{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem}
+@media(max-width:1000px){.pair{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.pair{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  overflow:hidden;display:flex;flex-direction:column}
+.card h3{margin:0;padding:.7rem .9rem .1rem;font-size:.95rem;letter-spacing:-.01em}
+.card .sub{padding:0 .9rem .6rem;color:var(--dim);font-size:.82rem}
+canvas{display:block;width:100%;height:340px;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+.stat{display:flex;gap:1.2rem;padding:.6rem .9rem;border-top:1px solid var(--line);
+  font-size:.82rem;flex-wrap:wrap}
+.stat b{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+.note{padding:.6rem .9rem .9rem;color:var(--dim);font-size:.8rem;border-top:1px solid var(--line)}
+.controls{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:.9rem;margin:1rem 0 0;display:flex;gap:1.25rem;align-items:center;flex-wrap:wrap}
+.controls label{font-size:.85rem;display:flex;align-items:center;gap:.45rem}
+input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;
+  background:var(--line);width:130px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--accent);cursor:pointer;border:none}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:none}
+button{font:inherit;font-size:.85rem;padding:.3rem .7rem;border-radius:6px;
+  border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--accent);color:var(--accent)}
+.layers{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem}
+.chip{display:flex;align-items:center;gap:.35rem;font-size:.78rem;padding:.22rem .55rem;
+  border:1px solid var(--line);border-radius:999px;cursor:pointer;user-select:none}
+.chip.off{opacity:.35}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+table{border-collapse:collapse;width:100%;font-size:.87rem;margin:.5rem 0 0;
+  display:block;overflow-x:auto;white-space:nowrap}
+th,td{text-align:left;padding:.45rem .7rem;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-weight:600}
+td.num{font-family:ui-monospace,Menlo,monospace}
+.win{color:var(--good);font-weight:600}
+.warn{color:var(--accent)}
+p{margin:0 0 1rem}
+ul{margin:0 0 1rem;padding-left:1.2rem}
+li{margin:.3rem 0}
+.foot{color:var(--dim);font-size:.82rem;border-top:1px solid var(--line);
+  margin-top:3rem;padding-top:1rem}
+.evidence{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.8rem;margin:.8rem 0 1rem}
+.evidence figure{margin:0;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;overflow:hidden}
+.evidence img{display:block;width:100%;height:260px;object-fit:contain;
+  background:#fcfcfa}
+.evidence figcaption{padding:.55rem .75rem;color:var(--dim);font-size:.8rem;
+  border-top:1px solid var(--line)}
+@media(max-width:700px){.evidence{grid-template-columns:1fr}.evidence img{height:auto}}
+
+pre.mono{background:var(--card);border:1px solid var(--line);border-radius:8px;
+  padding:.8rem .9rem;overflow-x:auto;font-size:.82rem;line-height:1.5}
+h2{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:1rem;text-transform:lowercase;color:var(--accent);
+  margin:2.6rem 0 .6rem;letter-spacing:0}
+h2::before{content:"# ";opacity:.5}
+p{margin:0 0 .85rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ftl_sram &mdash; 3.3&nbsp;V SRAM on GF180MCU</h1>
+<p class="lede mono">engineering log. everything here is drawn geometry or a
+measurement. where I got something wrong I have left it in, because the
+mistakes were more instructive than the results.</p>
+<p class="mono" style="color:var(--dim);font-size:.8rem">layout evidence refreshed
+2026-08-14 from gf180mcuD PDK commit <span class="mono">f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7</span>.</p>
+<div class="pair" id="pair"></div>
+
+<div class="controls">
+  <label>Explode <input type="range" id="ex" min="0" max="30" value="0"></label>
+  <label><input type="checkbox" id="link" checked> Link views</label>
+  <label><input type="checkbox" id="edges" checked> Edges</label>
+  <button id="reset">Reset view</button>
+  <span class="mono" style="color:var(--dim);font-size:.78rem" id="hint">drag to rotate · wheel to zoom</span>
+</div>
+<div class="layers" id="layers"></div>
+<h2>the cell</h2>
+<p>2.50 &times; 3.29 = <b>8.225 &micro;m&sup2;/bit</b>. The 5&nbsp;V cell that ships in
+the PDK is 3.68 &times; 4.84 = 17.81. So 2.17&times;.</p>
+<p>I expected more. Gate area shrank 4.6&times; going from the 5&nbsp;V devices to
+3.3&nbsp;V ones, and the cell only got 2.17&times; smaller. <b>The cell is bounded by
+rules, not by transistors.</b> What actually sets the dimensions: 0.80 &micro;m of
+N-well spacing between the diffusions, which is voltage-independent; the 0.22 &micro;m
+contact with 0.15 to poly; and M1 spacing at 0.23, which fixes both the cell
+height and the pass-gate x position. Shrinking the devices further would not move
+any of those.</p>
+<p>&beta; = 2.036. The foundry cell is 2.032. That is not a coincidence &mdash; the
+topology was reverse-engineered from it vertex by vertex before anything was
+drawn.</p>
+
+<h2>stability</h2>
+<p>Read SNM 12.2&nbsp;% of VDD at tt, 8.5&nbsp;% at the worst corner (fs 125&nbsp;&deg;C).
+Relatively <i>better</i> than the 5&nbsp;V cell at both, which I did not expect
+either. Monte-Carlo N=500 gives 20.6&sigma; at fs against a 4.5&sigma; requirement
+for 262&nbsp;144 bits.</p>
+<p>The number I actually watch is the 3&sigma;-stress case at 5.97&sigma;. That is the
+model-uncertainty proxy, and it is the one that would kill the design if the
+models are optimistic.</p>
+<p>SNM extraction is 45&deg; rotation, min over the two lobes, /&radic;2. A
+max-vertical-gap/2 approximation reads about 1.5&times; high. I did not reinvent
+it; it is lifted from the 5&nbsp;V deck so the two are directly comparable.</p>
+
+<h2>the 8T</h2>
+<p>3.09 &times; 4.65 = <b>14.369 &micro;m&sup2;/bit</b>. +75&nbsp;% on one 6T, and
+19&nbsp;% smaller than the 5&nbsp;V single-port cell while exposing a second,
+read-only port.</p>
+<p>The point is not the area, it is that the read port never touches the storage
+node. Wide-read SNM <b>equals hold SNM</b>: 773.5&nbsp;mV at fs 125&nbsp;&deg;C
+against 253.6 for a 6T read. This removes storage-node read disturb; it does
+<i>not</i> remove the separate sense-reference and offset-margin argument.</p>
+<p>The physical stack is now <span class="mono">RBL&ndash;MRD(QB)&ndash;MRS(RWL)&ndash;VSS</span>.
+RBL shares the alternate-row boundary, read VSS joins core VSS locally, and
+0.28&nbsp;&micro;m M2 bitlines widen only at Via1 pads. The preceding 3.20 &times; 4.82
+layout was 15.424&nbsp;&micro;m&sup2;; this is <b>6.8&nbsp;% smaller</b>.</p>
+<p>Against two raw 6T copies it saves <b>12.7&nbsp;%</b>, before counting the
+second array's duplicated periphery and write-coherence wiring. The comparison
+is one coherent 8T state versus two coherent 6T states, not 8T versus one 6T.</p>
+
+<h2>MXFP4 physical organisation</h2>
+<p>The primary tile is <b>8 &times; 128 payload bits</b> plus a separate
+<b>8 &times; 8 E8M0 sidecar</b>. Both use the isolated read port and return in one
+replica-timed 136-bit event. The CPU still sees four 32-bit payload slices and
+can piggyback the row's scale byte on a write.</p>
+<p>The sidecar is 29.19 &times; 37.20&nbsp;&micro;m including tap straps. It is intended
+for the otherwise empty corner where row and column periphery meet. That can
+make its <i>bounding-box</i> cost zero, but only if the assembled periphery proves
+the corner is at least that large. An inline 8 &times; 136 layout remains the
+verified fallback at 456.00 &times; 37.20&nbsp;&micro;m.</p>
+
+<h2>timing</h2>
+<p>The 6T schematic-level read bench had no access time for most of its life
+because it had no sense amplifier. It has a SPICE sense circuit now; that
+circuit is not yet drawn. Bitline capacitance is <b>extracted</b>, 0.98&nbsp;fF
+per cell; the wordline is a five-segment RC ladder at the PDK's own 6.8 &Omega;/sq
+salicided poly.</p>
+<table>
+<thead><tr><th>read, ns</th><th>tt 25&deg;</th><th>ss 125&deg;</th><th>ff &minus;40&deg;</th><th>fs 125&deg;</th><th>sf 125&deg;</th></tr></thead>
+<tbody>
+<tr><td>16 rows</td><td class="num">0.292</td><td class="num"><b>0.489</b></td><td class="num">0.300</td><td class="num">0.291</td><td class="num">0.351</td></tr>
+<tr><td>64 rows</td><td class="num">0.326</td><td class="num"><b>0.544</b></td><td class="num">0.322</td><td class="num">0.519</td><td class="num">0.572</td></tr>
+<tr><td>128 rows</td><td class="num">0.556</td><td class="num"><b>0.779</b></td><td class="num">0.336</td><td class="num">0.546</td><td class="num">0.600</td></tr>
+</tbody>
+</table>
+<p>8&times; the rows costs 1.6&times; the access time. That is what putting the
+bitlines on the amplifier's gates buys.</p>
+<p>Writes: 0.095&ndash;0.332&nbsp;ns. 30 of 30 wrote the value asked for. Writing a
+1 is consistently slower than writing a 0 &mdash; that asymmetry is the driver's,
+not the cell's.</p>
+<p>Sense amplifier offset, 300 Monte-Carlo samples: <b>&sigma; = 14.96&nbsp;mV</b>
+at ss, 17.02 at sf, mean essentially zero. Worst configuration clears it by
+<b>6.1&sigma;</b>.</p>
+<p><b>Do not compare 0.78&nbsp;ns to the foundry macro's 11.89&nbsp;ns
+min_period.</b> That number covers decode, precharge, write-back and self-timed
+margin. This is the sense path only. The gap is missing work, not a result.</p>
+<p>There is speed left on the table: 100&nbsp;mV was an arbitrary trigger, and a
+4.5&sigma; target needs 77. The table above is a safe operating point, not a
+floor.</p>
+<p>The optimized 8T has its own narrower claim: with the extracted
+<b>1.11&nbsp;fF/cell RBL capacitance</b>, all 20 five-corner selected/hold smoke
+cases pass. Selected-one RBL droop is 0&ndash;0.225&nbsp;mV and worst storage-node
+error is 0.015&nbsp;mV. The slowest selected-zero half discharge is 0.187&nbsp;ns
+for the lumped eight-cell column. This is a transistor/column check with no
+wire resistance, reference, sense latch or output timing, so it is not a macro
+access-time result.</p>
+
+<h2>what I got wrong</h2>
+<p>This is the useful part.</p>
+<p><b>The first sense amplifier read back the complement of the stored bit</b>,
+at the typical corner, while looking healthy. A cross-coupled latch isolated
+from the bitlines by NMOS pass gates. With both bitlines near VDD and 140&nbsp;mV
+between them the pass gate sits at V<sub>GS</sub> &asymp; 0.15&nbsp;V and is off.
+The latch saw about 1&nbsp;mV and resolved on its own offset. Precharging the
+latch nodes did not help &mdash; the gate is off in that direction too. Topology
+change, not a resize.</p>
+<p><b>The write driver wrote the complement of every value.</b> q connects to BL,
+so writing a 1 means pulling BLB low; I had the gate assignments the other way
+round. The cell flipped correctly and quickly, to the wrong data.</p>
+<p><b>VDD was four separate nets and VSS fifty-eight.</b> Rails are horizontal
+and per row and nothing tied them in y. DRC has no opinion on a broken net, and
+my own continuity checker only proved a rail spans the array <i>horizontally</i>.
+Array LVS found it. A 1&times;1 array cannot: one cell between two strap columns
+ties everything by accident.</p>
+<p><b>RBL shorted to VSS.</b> A VSS strap laid straight over the RBL pad, because
+both are centred on the cell. Two overlapping shapes on one layer are one shape,
+so there is no spacing to violate and DRC passes. The net was perfectly
+continuous &mdash; to the wrong thing.</p>
+<p><b>magic silently dropped every NMOS in the design</b> and still produced a
+plausible capacitance for every bitline. The implants are partitioned at the top
+level, so an NMOS is split across the hierarchy: diffusion and poly in the child
+cell, the Nplus that makes it an NMOS in the parent. The PMOS survived because
+its rule wants NPLUS <i>absent</i>. One <span class="mono">gds flatglob</span>
+fixes it. Check the device count before you read anything else.</p>
+<p><b>All fifty LEF pins read back dangling</b> the first time OpenROAD parsed
+it. The geometry was there; the tech LEF was not loaded, so the layer names
+resolved to nothing, and geometry on an undefined layer is discarded in silence.
+My generator's own "every pin has geometry" check passed happily.</p>
+<p><b>A bitline twist that does nothing.</b> One twist at mid-array bought 9&nbsp;%,
+all of it the two edge columns; interior pairs went 10.603 &rarr; 10.626&nbsp;fF.
+Victim and aggressor swap at the same height, so the adjacency they had is the
+adjacency they keep. Staggering them &mdash; even columns crossing a third of the
+way up, odd columns two thirds &mdash; gives <b>2.4&times;</b> less differential
+coupling. I would have written the first one up as a win if I had measured total
+capacitance instead of the imbalance.</p>
+<p><b>Poly crossing a COMP bar it was not gating</b>, twice. In the precharge,
+then again in the column mux after I had written the warning about it in that
+file's own docstring. Forty gate regions where thirty-two were wanted.</p>
+<p>Two of the sense-amp faults were in the <i>measurement</i>, not the circuit: I
+looked for the wrong sign, and a direction check silently compared against a
+value that was never measured, flagging all 30 cases as failures. <b>A check that
+cannot run is worse than no check.</b> It looks like a real defect and sends you
+after the wrong thing.</p>
+
+<h2>verification</h2>
+<p>Three checks, and every one of them has caught something the other two
+passed.</p>
+<table>
+<thead><tr><th>check</th><th>proves</th><th>caught</th></tr></thead>
+<tbody>
+<tr><td class="mono">inspect_array.py</td><td>the net is unbroken</td><td>7 connectivity breaks, all DRC-clean</td></tr>
+<tr><td class="mono">gf180mcu.drc</td><td>the geometry is legal</td><td>the usual</td></tr>
+<tr><td class="mono">gf180mcu.lvs</td><td>it is the <b>right</b> net</td><td>RBL&ndash;VSS short; VDD split four ways</td></tr>
+</tbody>
+</table>
+<p>LVS runs on the arrays, not on 1&times;1 cells, against schematics generated
+from the same (rows, cols). 6T 16&times;16 (1536 devices), 8T 8&times;8 (512),
+8T 8&times;128 (8192), and the inline 8&times;136 fallback
+(<b>8704 devices</b>) all match. Their DRC reports contain respectively
+4 / 6 / 5 / 5 markers, every one a classified whole-die density/fill rule a
+small coupon cannot satisfy; local geometry has zero markers.</p>
+<p>The pitch-repeated periphery now uses the same rule: a generated schematic
+is compared against the complete row, not just one visually plausible cell.
+The 16-column precharge row (48 PFETs) and 16-group 4:1 mux row (128 NFETs)
+both pass local DRC and LVS. Their remaining DRC entries are classified
+whole-die density checks; PEX and extracted transient simulation are still open.</p>
+<p>The inspector also traces nets now: COMP minus Poly2 for diffusion islands,
+union-find through every contact and via, and it asserts <b>one name is one net,
+one net is one name</b>. Two independent extractors agree on device count
+&mdash; magic 1536 / 512 / 512 against KLayout LVS.</p>
+
+<h2>acceptance chain</h2>
+<table>
+<thead><tr><th>gate</th><th>state</th><th>what it currently proves</th></tr></thead>
+<tbody>
+<tr><td>generated geometry</td><td class="win">pass</td><td>5&nbsp;nm grid, 6/8 gates per bit, continuous named rails, legal layer inventory</td></tr>
+<tr><td>GF180 DRC</td><td class="win">pass local</td><td>8&times;8, 8&times;128 and 8&times;136; density/fill deferred to die assembly</td></tr>
+<tr><td>array LVS</td><td class="win">pass</td><td>read order <span class="mono">RBL&ndash;MRD&ndash;MRS&ndash;VSS</span>, no boundary shorts or split supplies</td></tr>
+<tr><td>parasitic extraction</td><td class="warn">C only</td><td>BL 1.30, BLB 1.31, RBL 1.11&nbsp;fF/cell; wire/via resistance remains open</td></tr>
+<tr><td>five-corner 8T smoke</td><td class="win">20 / 20 pass</td><td>selected discharge, selected-one/hold leakage and storage-node disturbance</td></tr>
+<tr><td>RTL port contract</td><td class="win">pass</td><td>128+8 association, four CPU slices, collision suppression and replica timeout</td></tr>
+<tr><td>sense/reference mismatch</td><td class="warn">open</td><td>needs drawn single-ended sense/reference path and post-layout Monte-Carlo</td></tr>
+<tr><td>R+C, 136-bit bounce, macro timing</td><td class="warn">open</td><td>required before frequency, power or Liberty claims</td></tr>
+</tbody>
+</table>
+
+<h2>periphery layout evidence</h2>
+<div class="evidence">
+  <figure>
+    <img src="images/ftl_precharge16.png" alt="Top-view composite of the verified 16-column FTL precharge row">
+    <figcaption><span class="mono">precharge_row</span>, 16 columns. Full-row
+    composite used to review pitch alignment, repeated symmetry, rail continuity,
+    bitline access and the right-edge PCN join. Local DRC + LVS pass.</figcaption>
+  </figure>
+  <figure>
+    <img src="images/ftl_colmux4.png" alt="Top-view composite of one verified four-to-one FTL column mux group">
+    <figcaption><span class="mono">colmux4</span>, one 10 &micro;m group. M2 carries
+    the eight array-facing bitlines; M3 carries LBL/LBLB across them. Visual review
+    exposed an over-dense first route; this is the corrected local-DRC/LVS-clean geometry.</figcaption>
+  </figure>
+  <figure>
+    <img src="images/ftl_wldrv_alternate_pair_layers.png" alt="Every active layer across the left-even and right-odd FTL wordline-driver pair">
+    <figcaption>One 6.58&nbsp;&micro;m repetition of the complete alternate-edge
+    arrangement: native 3.3&nbsp;V <span class="mono">inv_2 + inv_6 + tap_2</span>
+    on left/even and mirrored right/odd edges. Both 32-driver strips are
+    local-DRC-clean, cut-stack clean and extracted-LVS matching at 512 MOSFETs
+    per edge. R+C PEX and timing versus the custom 8.04/4.00 target remain open.</figcaption>
+  </figure>
+  <figure>
+    <img src="images/ftl_mxfp4_scale_8x8.png" alt="Top view of the complete eight by eight E8M0 sidecar">
+    <figcaption>The 8&times;8 E8M0 sidecar, 29.19 &times; 37.20&nbsp;&micro;m.
+    Structural, cut-stack, local DRC and 512-device LVS pass. Corner fit is a
+    macro-floorplan condition, not yet an area result.</figcaption>
+  </figure>
+</div>
+
+<h2>area, honestly</h2>
+<p>The drawn 6T array is 8.9 &micro;m&sup2;/bit. A <i>macro</i> is not: it also carries a
+decoder, sense amplifiers, write drivers and an IO ring, none of which are drawn.
+So I fitted a two-term model on the four foundry macros, whose areas are exact
+from their LEF, and checked it reproduces all four before using it.</p>
+<pre class="mono">FIXED     85 025 um2      decoder, control, IO ring
+MARGINAL  30.37 um2/bit   array band = 1.70x its own bitcell
+validation: all four macros reproduced to +0.00%</pre>
+<p>Applied to the FTL cell, an 8&nbsp;KB memory is <b>1.08&nbsp;mm&sup2;</b> against
+2.08 for the same structure with the foundry cell. Doubling FIXED &mdash; the one
+assumption that could be wrong &mdash; moves it by 8&nbsp;%.</p>
+<p>Related, and measured from the PDK LEF: every
+<span class="mono">gf180mcu_fd_ip_sram</span> macro is <b>431.86 &micro;m wide at
+every depth</b>, 64 through 512 words, with height linear at 0.5625 &micro;m/word.
+So each carries 85&nbsp;026 &micro;m&sup2; of fixed periphery, paid once per
+<i>eight bits</i> of width. That is why a 128-bit bank costs +122&nbsp;% in
+macros. A generated array pays one decoder for the whole row: three real 4096-bit
+arrays, DRC- and LVS-clean, measure 8.965 / 9.047 / 8.924 &micro;m&sup2;/bit across
+a 4&times; aspect change. <b>A 1.4&nbsp;% spread.</b></p>
+
+<h2>state</h2>
+<table>
+<thead><tr><th>block</th><th>state</th></tr></thead>
+<tbody>
+<tr><td>bitcell, 6T and 8T</td><td class="win">drawn, DRC + LVS clean, extracted</td></tr>
+<tr><td>arrays to 8704 devices</td><td class="win">8&times;8, 8&times;128 and 8&times;136 local DRC + LVS clean</td></tr>
+<tr><td>precharge</td><td class="win">16-column row, local DRC + LVS clean; PEX open</td></tr>
+<tr><td>4:1 column mux</td><td class="win">16-group row, local DRC + LVS clean; PEX open</td></tr>
+<tr><td>wordline driver</td><td class="win">32-driver left/even + right/odd strips local DRC, cut-stack and 512-device LVS clean; R+C / timing open</td></tr>
+<tr><td>sense amp, write driver</td><td class="num">SPICE only, measured, not drawn</td></tr>
+<tr><td>row decoder</td><td class="num">hierarchical 2 &times; 3&rarr;8 plus 64 local combines specified, not drawn</td></tr>
+<tr><td>MXFP4 array views</td><td class="win">namespaced 8&times;128 + 8&times;8 + inline 8&times;136 GDS/LEF/CDL generated and LEF-audited</td></tr>
+<tr><td><span class="mono">.lib</span></td><td class="num">none, and none should be written yet</td></tr>
+</tbody>
+</table>
+<p>The goal is a macro for a tapeout trial. A trial has to answer four things:
+does the cell hold data and over what range, what is the yield and failure
+pattern, is the drawn cell the cell I simulated, and do the DRC-clean structures
+actually fabricate. It does <b>not</b> have to answer "what is the setup time at
+50&nbsp;MHz". So the trial macro is DC-accessible and slow, measured off-chip
+through the column mux. The sense amplifier gets fabricated beside the array as
+its own structure, so a broken amplifier cannot mask a working cell &mdash; which
+is the commonest way a first memory trial wastes its silicon.</p>
+<p>Organisation: 64 &times; 64 array, 4:1 column mux, 256 words &times; 16 bits.</p>
+<p>Nothing here derives from licensed <span class="mono">gf180mcu_ocd_*</span>
+content. The topology came from the Apache-2.0 foundry cell; the devices are the
+foundry's own Apache-2.0 models. It is 3.3&nbsp;V, and the system it would attach
+to signs off at 5&nbsp;V &mdash; that is a voltage-domain decision before it is a
+circuit one.</p>
+
+<script>const DATA = {"fd":{"label":"gf180mcu_fd_ip_sram","sub":"018SRAM_cell1 \u2014 5 V foundry cell","note":"Shipped in the PDK. Array pitch is 4.84 um, not the 5.18 um bbox: vertically mirrored rows overlap by 0.68 um where they share the VDD source.","bbox":[3.68,5.18],"pitch":[3.68,4.84],"area":17.8112,"prisms":[{"l":"Nwell","z0":-0.9,"z1":-0.3,"p":[[3.68,5.18],[0.0,5.18],[0.0,3.45],[3.68,3.45]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[3.16,4.5],[1.99,4.5],[1.99,5.05],[1.69,5.05],[1.69,4.5],[0.52,4.5],[0.52,3.9],[3.16,3.9]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[1.12,1.69],[0.82,1.69],[0.82,2.05],[1.69,2.05],[1.69,1.67],[1.99,1.67],[1.99,2.05],[2.86,2.05],[2.86,1.69],[2.56,1.69],[2.56,0.13],[3.16,0.13],[3.16,3.0],[0.52,3.0],[0.52,0.13],[1.12,0.13]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[2.71,4.72],[2.11,4.72],[2.11,1.83],[2.71,1.83]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[1.57,4.72],[0.97,4.72],[0.97,1.83],[1.57,1.83]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[3.52,1.37],[0.16,1.37],[0.16,0.6],[3.52,0.6]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.9381,0.4082],[0.82,0.4764],[0.7019,0.4082],[0.7019,0.2718],[0.82,0.2036],[0.9381,0.2718]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[2.4081,3.5882],[2.29,3.6564],[2.1719,3.5882],[2.1719,3.4518],[2.29,3.3836],[2.4081,3.4518]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.9781,0.4082],[2.86,0.4764],[2.7419,0.4082],[2.7419,0.2718],[2.86,0.2036],[2.9781,0.2718]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[3.0981,4.1482],[2.98,4.2164],[2.8619,4.1482],[2.8619,4.0118],[2.98,3.9436],[3.0981,4.0118]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[3.0981,2.3582],[2.98,2.4264],[2.8619,2.3582],[2.8619,2.2218],[2.98,2.1536],[3.0981,2.2218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.8181,4.1482],[0.7,4.2164],[0.5819,4.1482],[0.5819,4.0118],[0.7,3.9436],[0.8181,4.0118]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.8181,2.3582],[0.7,2.4264],[0.5819,2.3582],[0.5819,2.2218],[0.7,2.1536],[0.8181,2.2218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.9581,1.9482],[1.84,2.0164],[1.7219,1.9482],[1.7219,1.8118],[1.84,1.7436],[1.9581,1.8118]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.9581,4.9082],[1.84,4.9764],[1.7219,4.9082],[1.7219,4.7718],[1.84,4.7036],[1.9581,4.7718]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[1.5081,3.4482],[1.39,3.5164],[1.2719,3.4482],[1.2719,3.3118],[1.39,3.2436],[1.5081,3.3118]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.52,5.09],[0.16,5.09],[0.16,4.59],[3.52,4.59]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.15,4.29],[2.78,4.29],[2.78,2.98],[1.64,2.98],[1.64,3.59],[1.27,3.59],[1.27,2.61],[2.78,2.61],[2.78,2.08],[3.15,2.08]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.9,3.92],[2.04,3.92],[2.04,3.31],[2.41,3.31],[2.41,4.29],[0.53,4.29],[0.53,2.08],[0.9,2.08]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.52,1.63],[2.1,1.63],[2.1,2.21],[1.58,2.21],[1.58,1.63],[0.16,1.63],[0.16,1.03],[3.52,1.03]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.16,0.59],[2.1,0.59],[2.1,0.09],[3.16,0.09]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[1.58,0.59],[0.52,0.59],[0.52,0.09],[1.58,0.09]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[1.2296,0.4206],[1.09,0.5012],[0.9504,0.4206],[0.9504,0.2594],[1.09,0.1788],[1.2296,0.2594]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[2.7296,0.4206],[2.59,0.5012],[2.4504,0.4206],[2.4504,0.2594],[2.59,0.1788],[2.7296,0.2594]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[2.89,5.09],[2.29,5.09],[2.29,0.09],[2.89,0.09]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[1.39,5.09],[0.79,5.09],[0.79,0.09],[1.39,0.09]]},{"l":"Metal3","z0":3.16,"z1":3.71,"p":[[3.52,3.79],[0.16,3.79],[0.16,1.99],[3.52,1.99]]}]},"ftl":{"label":"gf180mcu_ftl_ip_sram","sub":"cell6t_03v3 \u2014 3.3 V, drawn here","note":"Same topology, redrawn against the 3.3 V rules with the SramCore relaxations. Pitch IS the bbox in x; in y the rows share the VDD contact at the cell edge.","bbox":[3.3,3.98],"pitch":[2.5,3.29],"area":8.225,"prisms":[{"l":"Nwell","z0":-0.9,"z1":-0.3,"p":[[3.3,3.98],[0.0,3.98],[0.0,2.37],[3.3,2.37]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[2.76,3.05],[1.79,3.05],[1.79,3.62],[1.51,3.62],[1.51,3.05],[0.54,3.05],[0.54,2.77],[2.76,2.77]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[0.54,1.97],[0.54,0.05],[0.985,0.05],[0.985,1.525],[1.51,1.525],[1.51,1.12],[1.79,1.12],[1.79,1.525],[2.315,1.525],[2.315,0.05],[2.76,0.05],[2.76,1.97]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[2.19,2.32],[2.2,2.32],[2.2,2.66],[2.19,2.66],[2.19,3.27],[1.91,3.27],[1.91,2.66],[1.9,2.66],[1.9,2.32],[1.91,2.32],[1.91,1.305],[2.19,1.305]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[1.39,2.08],[1.4,2.08],[1.4,2.42],[1.39,2.42],[1.39,3.27],[1.11,3.27],[1.11,2.42],[1.1,2.42],[1.1,2.08],[1.11,2.08],[1.11,1.305],[1.39,1.305]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[3.04,1.02],[0.26,1.02],[0.26,0.45],[3.04,0.45]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.8781,0.2582],[0.76,0.3264],[0.6419,0.2582],[0.6419,0.1218],[0.76,0.0536],[0.8781,0.1218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.6581,0.2582],[2.54,0.3264],[2.4219,0.2582],[2.4219,0.1218],[2.54,0.0536],[2.6581,0.1218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.7981,1.8982],[0.68,1.9664],[0.5619,1.8982],[0.5619,1.7618],[0.68,1.6936],[0.7981,1.7618]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.7981,2.9782],[0.68,3.0464],[0.5619,2.9782],[0.5619,2.8418],[0.68,2.7736],[0.7981,2.8418]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.7381,1.8982],[2.62,1.9664],[2.5019,1.8982],[2.5019,1.7618],[2.62,1.6936],[2.7381,1.7618]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.7381,2.9782],[2.62,3.0464],[2.5019,2.9782],[2.5019,2.8418],[2.62,2.7736],[2.7381,2.8418]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,1.3282],[1.65,1.3964],[1.5319,1.3282],[1.5319,1.1918],[1.65,1.1236],[1.7681,1.1918]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,3.5482],[1.65,3.6164],[1.5319,3.5482],[1.5319,3.4118],[1.65,3.3436],[1.7681,3.4118]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[1.3681,2.3182],[1.25,2.3864],[1.1319,2.3182],[1.1319,2.1818],[1.25,2.1136],[1.3681,2.1818]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[2.1681,2.5582],[2.05,2.6264],[1.9319,2.5582],[1.9319,2.4218],[2.05,2.3536],[2.1681,2.4218]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.9,3.65],[0.4,3.65],[0.4,3.31],[2.9,3.31]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.78,3.08],[2.45,3.08],[2.45,2.0],[1.42,2.0],[1.42,2.42],[1.08,2.42],[1.08,1.66],[2.78,1.66]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.85,2.74],[1.88,2.74],[1.88,2.32],[2.22,2.32],[2.22,3.08],[0.52,3.08],[0.52,1.66],[0.85,1.66]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.9,1.43],[0.4,1.43],[0.4,1.09],[2.9,1.09]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.77,0.36],[2.305,0.36],[2.305,0.02],[2.77,0.02]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.995,0.36],[0.53,0.36],[0.53,0.02],[0.995,0.02]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[0.9046,0.2706],[0.765,0.3512],[0.6254,0.2706],[0.6254,0.1094],[0.765,0.0288],[0.9046,0.1094]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[2.6796,0.2706],[2.54,0.3512],[2.4004,0.2706],[2.4004,0.1094],[2.54,0.0288],[2.6796,0.1094]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[2.76,3.48],[2.315,3.48],[2.315,0.0],[2.76,0.0]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[0.985,3.48],[0.54,3.48],[0.54,0.0],[0.985,0.0]]}]},"ftl8":{"label":"gf180mcu_ftl_ip_sram","sub":"cell8t_03v3 \u2014 3.3 V 8T, the MXFP4 array cell","note":"The 6T core plus an isolated read stack ordered RBL-MRD(QB)-MRS(RWL)-VSS. RBL shares the alternate-row boundary and read VSS joins core VSS locally; minimum-width M2 tracks widen only at their Via1 landings.","bbox":[3.89,5.34],"pitch":[3.09,4.65],"area":14.3685,"prisms":[{"l":"Nwell","z0":-0.9,"z1":-0.3,"p":[[3.89,5.34],[0.0,5.34],[0.0,3.73],[3.89,3.73]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[2.76,4.41],[1.79,4.41],[1.79,4.98],[1.51,4.98],[1.51,4.41],[0.54,4.41],[0.54,4.13],[2.76,4.13]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[0.54,3.33],[0.54,1.41],[0.985,1.41],[0.985,2.885],[1.51,2.885],[1.51,2.48],[1.79,2.48],[1.79,2.885],[2.315,2.885],[2.315,1.41],[2.76,1.41],[2.76,3.33]]},{"l":"COMP","z0":-0.3,"z1":0.0,"p":[[1.875,1.71],[1.43,1.71],[1.43,0.05],[1.875,0.05]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[2.19,3.68],[2.2,3.68],[2.2,4.02],[2.19,4.02],[2.19,4.63],[1.91,4.63],[1.91,4.02],[1.9,4.02],[1.9,3.68],[1.91,3.68],[1.91,2.665],[2.19,2.665]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[1.39,3.44],[1.4,3.44],[1.4,3.78],[1.39,3.78],[1.39,4.63],[1.11,4.63],[1.11,3.78],[1.1,3.78],[1.1,3.44],[1.11,3.44],[1.11,2.665],[1.39,2.665]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[0.26,1.81],[3.39,1.81],[3.39,2.38],[0.26,2.38]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[3.63,1.31],[0.26,1.31],[0.26,1.03],[3.63,1.03]]},{"l":"Poly2","z0":0.0,"z1":0.2,"p":[[3.34,0.79],[3.04,0.79],[3.04,0.73],[1.21,0.73],[1.21,0.45],[3.04,0.45],[3.04,0.39],[3.34,0.39]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,1.6382],[1.65,1.7064],[1.5319,1.6382],[1.5319,1.5018],[1.65,1.4336],[1.7681,1.5018]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,0.2582],[1.65,0.3264],[1.5319,0.2582],[1.5319,0.1218],[1.65,0.0536],[1.7681,0.1218]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[3.3081,0.6582],[3.19,0.7264],[3.0719,0.6582],[3.0719,0.5218],[3.19,0.4536],[3.3081,0.5218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.8781,1.6182],[0.76,1.6864],[0.6419,1.6182],[0.6419,1.4818],[0.76,1.4136],[0.8781,1.4818]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.6581,1.6182],[2.54,1.6864],[2.4219,1.6182],[2.4219,1.4818],[2.54,1.4136],[2.6581,1.4818]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.7981,3.2582],[0.68,3.3264],[0.5619,3.2582],[0.5619,3.1218],[0.68,3.0536],[0.7981,3.1218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[0.7981,4.3382],[0.68,4.4064],[0.5619,4.3382],[0.5619,4.2018],[0.68,4.1336],[0.7981,4.2018]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.7381,3.2582],[2.62,3.3264],[2.5019,3.2582],[2.5019,3.1218],[2.62,3.0536],[2.7381,3.1218]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[2.7381,4.3382],[2.62,4.4064],[2.5019,4.3382],[2.5019,4.2018],[2.62,4.1336],[2.7381,4.2018]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,2.6882],[1.65,2.7564],[1.5319,2.6882],[1.5319,2.5518],[1.65,2.4836],[1.7681,2.5518]]},{"l":"Contact","z0":0.0,"z1":0.86,"p":[[1.7681,4.9082],[1.65,4.9764],[1.5319,4.9082],[1.5319,4.7718],[1.65,4.7036],[1.7681,4.7718]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[1.3681,3.6782],[1.25,3.7464],[1.1319,3.6782],[1.1319,3.5418],[1.25,3.4736],[1.3681,3.5418]]},{"l":"Contact","z0":0.2,"z1":0.86,"p":[[2.1681,3.9182],[2.05,3.9864],[1.9319,3.9182],[1.9319,3.7818],[2.05,3.7136],[2.1681,3.7818]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.4,4.67],[3.53,4.67],[3.53,5.01],[0.4,5.01]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.78,4.44],[2.45,4.44],[2.45,3.36],[1.42,3.36],[1.42,3.78],[1.08,3.78],[1.08,3.02],[3.38,3.02],[3.38,3.36],[2.78,3.36]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.85,4.1],[1.88,4.1],[1.88,3.68],[2.22,3.68],[2.22,4.44],[0.52,4.44],[0.52,3.02],[0.85,3.02]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.53,2.79],[0.4,2.79],[0.4,2.45],[1.48,2.45],[1.48,1.4],[1.82,1.4],[1.82,2.45],[3.53,2.45]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[3.38,2.22],[3.0,2.22],[3.0,0.42],[3.38,0.42]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[2.77,1.72],[2.305,1.72],[2.305,1.38],[2.77,1.38]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[0.995,1.72],[0.53,1.72],[0.53,1.38],[0.995,1.38]]},{"l":"Metal1","z0":0.86,"z1":1.41,"p":[[1.93,0.36],[1.37,0.36],[1.37,0.02],[1.93,0.02]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[1.7896,0.2706],[1.65,0.3512],[1.5104,0.2706],[1.5104,0.1094],[1.65,0.0288],[1.7896,0.1094]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[3.3296,2.1106],[3.19,2.1912],[3.0504,2.1106],[3.0504,1.9494],[3.19,1.8688],[3.3296,1.9494]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[3.3296,3.2906],[3.19,3.3712],[3.0504,3.2906],[3.0504,3.1294],[3.19,3.0488],[3.3296,3.1294]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[0.9046,1.6306],[0.765,1.7112],[0.6254,1.6306],[0.6254,1.4694],[0.765,1.3888],[0.9046,1.4694]]},{"l":"Via1","z0":1.41,"z1":2.01,"p":[[2.6796,1.6306],[2.54,1.7112],[2.4004,1.6306],[2.4004,1.4694],[2.54,1.3888],[2.6796,1.4694]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[2.68,1.36],[2.73,1.36],[2.73,1.74],[2.68,1.74],[2.68,4.84],[2.4,4.84],[2.4,1.74],[2.35,1.74],[2.35,1.36],[2.4,1.36],[2.4,0.0],[2.68,0.0]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[0.9,1.36],[0.955,1.36],[0.955,1.74],[0.9,1.74],[0.9,4.84],[0.62,4.84],[0.62,1.74],[0.575,1.74],[0.575,1.36],[0.62,1.36],[0.62,0.0],[0.9,0.0]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[1.84,0.38],[1.79,0.38],[1.79,4.84],[1.51,4.84],[1.51,0.38],[1.46,0.38],[1.46,0.0],[1.84,0.0]]},{"l":"Metal2","z0":2.01,"z1":2.56,"p":[[3.38,3.4],[3.0,3.4],[3.0,1.84],[3.38,1.84]]}]}};
+
+const LAYERS = [
+  ["Nwell",   "#3b5a86"],
+  ["COMP",    "#4f9d69"],
+  ["Poly2",   "#c0392b"],
+  ["Contact", "#8b8f96"],
+  ["Metal1",  "#3a86c8"],
+  ["Via1",    "#9aa0a8"],
+  ["Metal2",  "#9b59b6"],
+  ["Via2",    "#9aa0a8"],
+  ["Metal3",  "#e08030"],
+];
+const ORDER = {}, COLOR = {}, RGB = {};
+LAYERS.forEach(([n, c], i) => {
+  ORDER[n] = i; COLOR[n] = c;
+  const v = parseInt(c.slice(1), 16);
+  RGB[n] = [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+});
+const on = {}; LAYERS.forEach(([n]) => on[n] = true);
+// Outline colour. Near-black reads as heavy at this line density -- a mid dark
+// grey separates the prisms without dominating them.
+const EDGE = [0.36, 0.38, 0.41];      // ~ #5c6169
+
+// ---- triangulation --------------------------------------------------------
+// The merged per-layer polygons are non-convex (the M1 cross-couple combs, the
+// NMOS COMP comb), so caps cannot be fanned -- they need real ear clipping.
+function earclip(p) {
+  const n = p.length;
+  if (n < 3) return [];
+  let area = 0;
+  for (let i = 0, j = n - 1; i < n; j = i++) area += p[j][0] * p[i][1] - p[i][0] * p[j][1];
+  const idx = [];
+  for (let i = 0; i < n; i++) idx.push(area < 0 ? n - 1 - i : i);   // force CCW
+  const cross = (a, b, c) =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const inTri = (a, b, c, q) => {
+    const d1 = cross(a, b, q), d2 = cross(b, c, q), d3 = cross(c, a, q);
+    return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+  };
+  const out = [];
+  let guard = 0;
+  while (idx.length > 3 && guard++ < 4 * n) {
+    let clipped = false;
+    for (let i = 0; i < idx.length; i++) {
+      const ia = idx[(i + idx.length - 1) % idx.length], ib = idx[i],
+            ic = idx[(i + 1) % idx.length];
+      const a = p[ia], b = p[ib], c = p[ic];
+      if (cross(a, b, c) <= 0) continue;                 // reflex
+      let ok = true;
+      for (const k of idx) {
+        if (k === ia || k === ib || k === ic) continue;
+        if (inTri(a, b, c, p[k])) { ok = false; break; }
+      }
+      if (!ok) continue;
+      out.push([ia, ib, ic]);
+      idx.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;                                 // degenerate: bail out
+  }
+  for (let i = 1; i + 1 < idx.length; i++) out.push([idx[0], idx[i], idx[i + 1]]);
+  return out;
+}
+
+/** triangles + the FULL wireframe (top cap, bottom cap and vertical corners),
+ *  in object space, built once per cell. The depth buffer hides whichever of
+ *  them should be hidden, so outlining everything is safe. */
+function buildGeom(cell) {
+  const tris = [], edges = [];
+  for (const pr of cell.prisms) {
+    if (!(pr.l in ORDER)) continue;
+    const p = pr.p, n = p.length, fan = earclip(p);
+    for (const [a, b, c] of fan) {
+      tris.push({ l: pr.l, kind: 1, v: [[p[a][0], p[a][1], pr.z1],
+                                        [p[b][0], p[b][1], pr.z1],
+                                        [p[c][0], p[c][1], pr.z1]] });
+      tris.push({ l: pr.l, kind: 0, v: [[p[c][0], p[c][1], pr.z0],
+                                        [p[b][0], p[b][1], pr.z0],
+                                        [p[a][0], p[a][1], pr.z0]] });
+    }
+    for (let i = 0; i < n; i++) {
+      const a = p[i], b = p[(i + 1) % n];
+      const nx = b[1] - a[1], ny = a[0] - b[0];
+      const q = [[a[0], a[1], pr.z0], [b[0], b[1], pr.z0],
+                 [b[0], b[1], pr.z1], [a[0], a[1], pr.z1]];
+      tris.push({ l: pr.l, kind: 2, nx, ny, v: [q[0], q[1], q[2]] });
+      tris.push({ l: pr.l, kind: 2, nx, ny, v: [q[0], q[2], q[3]] });
+      edges.push({ l: pr.l, a: q[3], b: q[2] });      // top cap
+      edges.push({ l: pr.l, a: q[0], b: q[1] });      // bottom cap
+      edges.push({ l: pr.l, a: q[0], b: q[3] });      // vertical corner
+    }
+  }
+  return { tris, edges };
+}
+
+const VS = `#version 300 es
+in vec3 aPos; in vec3 aCol; out vec3 vCol;
+void main(){ vCol = aCol; gl_Position = vec4(aPos, 1.0); }`;
+const FS = `#version 300 es
+precision mediump float; in vec3 vCol; out vec4 o;
+void main(){ o = vec4(vCol, 1.0); }`;
+
+// ---- a view ---------------------------------------------------------------
+class View {
+  constructor(canvas, cell) {
+    this.cv = canvas; this.cell = cell; this.g = buildGeom(cell);
+    this.yaw = YAW0; this.tilt = TILT0; this.zoom = 1; this.explode = 0;
+    this.gl = canvas.getContext("webgl2", { antialias: true, alpha: true,
+                                            premultipliedAlpha: true, depth: true });
+    if (!this.gl) { this.fail(); return; }
+    this.initGL();
+    this.bind();
+  }
+  fail() {
+    const d = document.createElement("div");
+    d.className = "note";
+    d.innerHTML = "<b>WebGL2 required.</b> These cells are drawn with a real depth " +
+      "buffer because painter's-algorithm sorting mis-orders 5-8 % of pixels on " +
+      "the non-convex merged shapes in this layout.";
+    this.cv.replaceWith(d);
+  }
+  initGL() {
+    const gl = this.gl;
+    const sh = (t, src) => {
+      const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s);
+      return s;
+    };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS));
+    gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw gl.getProgramInfoLog(pr);
+    gl.useProgram(pr);
+    this.prog = pr;
+    this.aPos = gl.getAttribLocation(pr, "aPos");
+    this.aCol = gl.getAttribLocation(pr, "aCol");
+    this.buf = gl.createBuffer();
+    gl.enable(gl.DEPTH_TEST);
+    this.vbo = new Float32Array(0);
+  }
+  /** object-space bbox of the currently VISIBLE prisms, explode included */
+  bounds() {
+    let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9;
+    for (const pr of this.cell.prisms) {
+      if (!(pr.l in ORDER) || !on[pr.l]) continue;
+      const dz = this.explode * ORDER[pr.l];
+      if (pr.z0 + dz < z0) z0 = pr.z0 + dz;
+      if (pr.z1 + dz > z1) z1 = pr.z1 + dz;
+      for (const q of pr.p) {
+        if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0];
+        if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1];
+      }
+    }
+    if (x0 > x1) { x0 = y0 = z0 = 0; x1 = y1 = z1 = 1; }   // nothing visible
+    return { x0, y0, z0, x1, y1, z1 };
+  }
+  bind() {
+    const c = this.cv;
+    let drag = null;
+    c.addEventListener("pointerdown", e => {
+      drag = { x: e.clientX, y: e.clientY, yaw: this.yaw, tilt: this.tilt };
+      c.setPointerCapture(e.pointerId);
+    });
+    c.addEventListener("pointermove", e => {
+      if (!drag) return;
+      const yaw = drag.yaw + (e.clientX - drag.x) * 0.009;
+      const tilt = Math.max(TILT_MIN,
+        Math.min(TILT_MAX, drag.tilt + (e.clientY - drag.y) * 0.007));
+      apply(v => { v.yaw = yaw; v.tilt = tilt; }, this);
+    });
+    const end = e => { drag = null; try { c.releasePointerCapture(e.pointerId); } catch (_) {} };
+    c.addEventListener("pointerup", end);
+    c.addEventListener("pointercancel", end);
+    c.addEventListener("wheel", e => {
+      e.preventDefault();
+      const z = Math.max(0.4, Math.min(4, this.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      apply(v => { v.zoom = z; }, this);
+    }, { passive: false });
+  }
+  /** project every visible triangle, then centre on the projected outline */
+  project() {
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+    const ct = Math.cos(this.tilt), st = Math.sin(this.tilt);
+    const s = SCALE * this.zoom;
+    const b = this.bounds();
+    const bx = (b.x0 + b.x1) / 2, by = (b.y0 + b.y1) / 2, bz = (b.z0 + b.z1) / 2;
+    const out = [];
+    let px0 = 1e9, px1 = -1e9, py0 = 1e9, py1 = -1e9, pz0 = 1e9, pz1 = -1e9;
+    const tr = (p, dz) => {
+      const x = p[0] - bx, y = p[1] - by, z = p[2] + dz - bz;
+      const X = x * cy - y * sy, Y = x * sy + y * cy;
+      // Tilting must carry +z toward screen-UP; the other sign convention is
+      // top-down-correct but inverts the stack the moment you tilt.
+      const Y2 = Y * ct + z * st, Z2 = z * ct - Y * st;
+      const sx = X * s, syy = -Y2 * s;
+      if (sx < px0) px0 = sx; if (sx > px1) px1 = sx;
+      if (syy < py0) py0 = syy; if (syy > py1) py1 = syy;
+      if (Z2 < pz0) pz0 = Z2; if (Z2 > pz1) pz1 = Z2;
+      return [sx, syy, Z2];
+    };
+    for (const t of this.g.tris) {
+      if (!on[t.l]) continue;
+      const dz = this.explode * ORDER[t.l];
+      out.push({ t, v: t.v.map(p => tr(p, dz)) });
+    }
+    const eout = [];
+    for (const e of this.g.edges) {
+      if (!on[e.l]) continue;
+      const dz = this.explode * ORDER[e.l];
+      eout.push([tr(e.a, dz), tr(e.b, dz)]);
+    }
+    return { out, eout, px0, px1, py0, py1, pz0, pz1 };
+  }
+  shadeOf(t, cy, sy) {
+    if (t.kind === 1) return 1.16;
+    if (t.kind === 0) return 0.60;
+    const n = Math.hypot(t.nx, t.ny) || 1;
+    return 0.78 + 0.22 * ((t.nx / n) * cy - (t.ny / n) * sy);
+  }
+  draw() {
+    const cv = this.cv;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    }
+    const P = this.project();
+    if (!P.out.length) {
+      const gl = this.gl;
+      gl.viewport(0, 0, cv.width, cv.height);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      return;
+    }
+    // centre on the PROJECTED outline: for an asymmetric cell the projection of
+    // the object centre is tens of pixels off the middle of what you see
+    const tx = w / 2 - (P.px0 + P.px1) / 2, ty = h / 2 - (P.py0 + P.py1) / 2;
+    const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+    const zr = Math.max(1e-6, P.pz1 - P.pz0);
+    const clip = (p, bias) => [
+      2 * (p[0] + tx) / w - 1,
+      1 - 2 * (p[1] + ty) / h,
+      (1 - 2 * (p[2] - P.pz0) / zr) * 0.98 - bias, // nearer -> smaller clip z.
+      // The 0.98 leaves room for the edge bias: mapping to exactly [-1,1] would
+      // push biased edge lines outside the clip volume and they would vanish.
+    ];
+    this.drawGL(P, clip, cy, sy);
+  }
+  drawGL(P, clip, cy, sy) {
+    const gl = this.gl, cv = this.cv;
+    const nv = P.out.length * 3, need = nv * 6;
+    if (this.vbo.length < need) this.vbo = new Float32Array(need);
+    const a = this.vbo;
+    let k = 0;
+    for (const o of P.out) {
+      const f = this.shadeOf(o.t, cy, sy), c = RGB[o.t.l];
+      const r = Math.min(1, c[0] * f), g = Math.min(1, c[1] * f), b = Math.min(1, c[2] * f);
+      for (const p of o.v) {
+        const q = clip(p, 0);
+        a[k++] = q[0]; a[k++] = q[1]; a[k++] = q[2];
+        a[k++] = r; a[k++] = g; a[k++] = b;
+      }
+    }
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+    gl.bufferData(gl.ARRAY_BUFFER, a.subarray(0, need), gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(this.aPos);
+    gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, 24, 0);
+    gl.enableVertexAttribArray(this.aCol);
+    gl.vertexAttribPointer(this.aCol, 3, gl.FLOAT, false, 24, 12);
+    gl.depthFunc(gl.LESS);
+    gl.drawArrays(gl.TRIANGLES, 0, nv);
+
+    if (!document.getElementById("edges").checked || !P.eout.length) return;
+    const ne = P.eout.length * 2, needE = ne * 6;
+    if (this.vboE === undefined || this.vboE.length < needE) this.vboE = new Float32Array(needE);
+    const e = this.vboE; k = 0;
+    for (const seg of P.eout) for (const p of seg) {
+      const q = clip(p, 4e-3);                     // nudge toward the viewer
+      e[k++] = q[0]; e[k++] = q[1]; e[k++] = q[2];
+      e[k++] = EDGE[0]; e[k++] = EDGE[1]; e[k++] = EDGE[2];
+    }
+    gl.bufferData(gl.ARRAY_BUFFER, e.subarray(0, needE), gl.DYNAMIC_DRAW);
+    gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(this.aCol, 3, gl.FLOAT, false, 24, 12);
+    gl.depthFunc(gl.LEQUAL);
+    gl.drawArrays(gl.LINES, 0, ne);
+  }
+}
+
+// ---- wire up --------------------------------------------------------------
+const views = [];
+let SCALE = 1;
+const YAW0 = -0.62, TILT0 = 0.98, TILT_MIN = 0.08, TILT_MAX = 1.30;
+
+/** projected extent of a view at a given angle.
+ *  Deliberately ignores layer visibility: the fit must be a function of the
+ *  EXPLODE only, or hiding a layer would silently rescale the view. */
+function projExtent(view, yaw, tilt) {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw);
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
+  let X0 = 1e9, X1 = -1e9, Y0 = 1e9, Y1 = -1e9;
+  for (const pr of view.cell.prisms) {
+    if (!(pr.l in ORDER)) continue;
+    const dz = view.explode * ORDER[pr.l];
+    for (const q of pr.p) {
+      const X = q[0] * cy - q[1] * sy, Y = q[0] * sy + q[1] * cy;
+      if (X < X0) X0 = X;
+      if (X > X1) X1 = X;
+      for (const z of [pr.z0 + dz, pr.z1 + dz]) {
+        const Y2 = Y * ct + z * st;
+        if (Y2 < Y0) Y0 = Y2;
+        if (Y2 > Y1) Y1 = Y2;
+      }
+    }
+  }
+  return { w: Math.max(1e-6, X1 - X0), h: Math.max(1e-6, Y1 - Y0) };
+}
+
+/** One scale shared by both cells -- that is the whole point of the page -- so
+ *  it is fitted to whichever needs it, sampled around the yaw circle and across
+ *  the tilt range so nothing clips as you drag. Called on resize and on explode,
+ *  NEVER on a layer toggle. */
+function fitScale() {
+  let s = Infinity;
+  for (const v of views) {
+    const aw = v.cv.clientWidth * 0.88, ah = v.cv.clientHeight * 0.88;
+    if (!v.gl || !(aw > 0 && ah > 0)) continue;
+    for (const t of [TILT_MIN, TILT0, TILT_MAX]) {
+      for (let i = 0; i < 24; i++) {
+        const e = projExtent(v, YAW0 + i * Math.PI / 12, t);
+        s = Math.min(s, aw / e.w, ah / e.h);
+      }
+    }
+  }
+  if (isFinite(s) && s > 0) SCALE = s;
+}
+
+function apply(fn, src) {
+  const linked = document.getElementById("link").checked;
+  for (const v of views) if (v.gl && (linked || v === src)) fn(v);
+  render();
+}
+function render() { for (const v of views) if (v.gl) v.draw(); }
+
+(function init() {
+  const pair = document.getElementById("pair");
+  const keys = ["fd", "ftl", "ftl8"];
+  for (const k of keys) {
+    const d = DATA[k];
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML =
+      '<h3>' + d.label + '</h3><div class="sub">' + d.sub + '</div>' +
+      '<canvas></canvas>' +
+      '<div class="stat"><span>pitch <b>' + d.pitch[0] + ' × ' + d.pitch[1] + ' µm</b></span>' +
+      '<span>per bit <b>' + d.area.toFixed(2) + ' µm²</b></span>' +
+      '<span>prisms <b>' + d.prisms.length + '</b></span></div>' +
+      '<div class="note">' + d.note + '</div>';
+    pair.appendChild(card);
+    views.push(new View(card.querySelector("canvas"), d));
+  }
+
+  const box = document.getElementById("layers");
+  const present = new Set();
+  for (const k of keys) for (const p of DATA[k].prisms) present.add(p.l);
+  for (const [n, c] of LAYERS) {
+    if (!present.has(n)) continue;
+    const el = document.createElement("span");
+    el.className = "chip";
+    el.innerHTML = '<span class="sw" style="background:' + c + '"></span>' + n;
+    // no fitScale() here on purpose -- toggling a layer must not rescale
+    el.onclick = () => { on[n] = !on[n]; el.classList.toggle("off", !on[n]); render(); };
+    box.appendChild(el);
+  }
+
+  document.getElementById("ex").oninput = e => {
+    for (const w of views) w.explode = (+e.target.value / 100) * 4;
+    fitScale();            // opening the stack grows it; refit so it stays framed
+    render();
+  };
+  document.getElementById("edges").onchange = render;
+  document.getElementById("reset").onclick = () => {
+    for (const v of views) { v.yaw = YAW0; v.tilt = TILT0; v.zoom = 1; v.explode = 0; }
+    document.getElementById("ex").value = 0;
+    fitScale(); render();
+  };
+  const refit = () => { fitScale(); render(); };
+  window.addEventListener("resize", refit);
+  requestAnimationFrame(refit);   // canvases size from CSS; fit after first layout
+  refit();
+})();
+</script>
+</body>
+</html>

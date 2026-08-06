@@ -18,6 +18,24 @@ python3 tools/extract_cell_meta.py   # PDK  -> docs/cells.json
 python3 tools/build_site.py          # + videos -> docs/index.html
 ```
 
+## Bitcell comparison
+
+`bitcell_compare.html` is a separate engineering report for the custom FTL
+SRAM. Its three interactive cells are extracted from the pinned foundry GDS and
+the current generated 6T/8T array GDS; they are not redrawn in JavaScript.
+
+After the SRAM acceptance flow has rebuilt `ip/gf180mcu_ftl_ip_sram/build/gds`,
+regenerate both the standalone JSON and the identical inline page data with:
+
+```bash
+python3 tools/extract_bitcell_pair.py \
+  --out ../bitcell_pair.json --html ../bitcell_compare.html
+```
+
+Run `node tools/test_bitcell_viewer.mjs` after changes. It checks that all
+three WebGL2 views render, remain centered at one shared scale, preserve zoom
+when layers are toggled, and produce no browser console errors.
+
 ## `cells.json`
 
 692 records read straight out of the PDK — LEF for the footprint, placement

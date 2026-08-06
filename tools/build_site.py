@@ -39,18 +39,17 @@ STACK = [
     ("COMP",     "22/0",  "#2f7a4f", -200.0, 200.0,  "Diffusion"),
 ]
 
-LIB_INFO = {
-    "gf180mcu_fd_io":          ("I/O", "5 V wide-range inline non-CUP GPIO. 75 x 350 um cells on GF_IO_Site."),
-    "gf180mcu_ocd_io":         ("I/O", "OCD variant with split power domains and independent VDD/VSS cells."),
-    "gf180mcu_fd_sc_mcu7t5v0": ("Standard cells", "5 V, 7-track. The template default digital library."),
-    "gf180mcu_fd_sc_mcu9t5v0": ("Standard cells", "5 V, 9-track. Taller cells, more drive per area."),
-    "gf180mcu_as_sc_mcu7t3v3": ("Standard cells", "3.3 V, 7-track."),
-    "gf180mcu_osu_sc_gp9t3v3": ("Standard cells", "3.3 V, 9-track, OSU general purpose."),
-    "gf180mcu_osu_sc_gp12t3v3":("Standard cells", "3.3 V, 12-track, OSU general purpose."),
-    "gf180mcu_fd_pr":          ("Primitives", "Bipolar NPN/PNP devices and the eFuse primitive. Layout only - no LEF or Liberty."),
-    "gf180mcu_fd_ip_sram":     ("Macro", "Single-port SRAM, 8-bit words with byte write mask."),
-    "gf180mcu_ocd_ip_sram":    ("Macro", "OCD single-port SRAM."),
-    "gf180mcu_re_efuse":       ("Macro", "One-time-programmable eFuse arrays and wrappers."),
+# Most standard-cell and I/O libraries keep every cell in one GDS. Macro and
+# primitive libraries instead ship one GDS per cell. These names are kept here
+# so the generated cards can show the exact path, relative to gf180mcuD/.
+SHARED_GDS = {
+    "gf180mcu_fd_io": "gf180mcu_fd_io.gds",
+    "gf180mcu_ocd_io": "gf180mcu_ocd_io.gds",
+    "gf180mcu_fd_sc_mcu7t5v0": "gf180mcu_fd_sc_mcu7t5v0.gds",
+    "gf180mcu_fd_sc_mcu9t5v0": "gf180mcu_fd_sc_mcu9t5v0.gds",
+    "gf180mcu_as_sc_mcu7t3v3": "gf180mcu_as_sc_mcu7t3v3.gds",
+    "gf180mcu_osu_sc_gp9t3v3": "gf180mcu_osu_sc_gp9t3v3.gds",
+    "gf180mcu_osu_sc_gp12t3v3": "gf180mcu_osu_sc_gp12t3v3.gds",
 }
 
 # Function-family labels, keyed by the cell-name stem.
@@ -103,6 +102,21 @@ def prim_family(short):
     return ""
 
 
+def gds_source(name, lib, short):
+    """Return the cell's source GDS path, relative to gf180mcuD/."""
+    if lib == "gf180mcu_fd_io" and name.startswith("gf180mcu_ef_io__"):
+        filename = "gf180mcu_ef_io.gds"
+    elif lib in SHARED_GDS:
+        filename = SHARED_GDS[lib]
+    elif lib == "gf180mcu_fd_pr":
+        filename = "efuse.gds" if short == "efuse_cell" else short + ".gds"
+    elif lib in ("gf180mcu_fd_ip_sram", "gf180mcu_ocd_ip_sram"):
+        filename = name + ".gds"
+    else:
+        filename = short + ".gds"
+    return "libs.ref/%s/gds/%s" % (lib, filename)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cells", default="docs/cells.json")
@@ -134,6 +148,9 @@ def main():
         pwr = [p["name"] for p in c["pins"] if p["use"] in ("POWER", "GROUND")]
         bidi = [p["name"] for p in c["pins"]
                 if p["dir"] == "INOUT" and p["use"] not in ("POWER", "GROUND")]
+        unknown = [p["name"] for p in c["pins"]
+                   if p["dir"] not in ("INPUT", "OUTPUT", "INOUT")
+                   and p["use"] not in ("POWER", "GROUND")]
         st = stem(c["short"])
         fam = FAMILY.get(st, "")
         if not fam and c["lib"].endswith("_pr"):
@@ -142,29 +159,28 @@ def main():
             "n": name, "s": c["short"], "l": c["lib"], "st": st,
             "fam": fam, "w": sz[0], "h": sz[1],
             "site": c["site"] or "", "area": c["area"],
-            "i": ins, "o": outs, "p": pwr, "b": bidi,
+            "i": ins, "o": outs, "p": pwr, "b": bidi, "u": unknown,
             "fn": c["functions"], "v": vid or "",
+            "g": gds_source(name, c["lib"], c["short"]),
         })
 
     libs = sorted({r["l"] for r in recs})
     nvid = sum(1 for r in recs if r["v"])
 
     stack_rows = "".join(
-        '<tr><td><span class="sw" style="--c:%s"></span>%s</td><td class="m">%s</td>'
-        '<td class="m n">%g</td><td class="m n">%g</td><td class="d">%s</td></tr>'
-        % (c, n, g, z, t, html.escape(d)) for n, g, c, z, t, d in STACK)
-
-    lib_rows = "".join(
-        '<tr><td class="m">%s</td><td>%s</td><td class="n">%d</td><td class="d">%s</td></tr>'
-        % (l, LIB_INFO.get(l, ("", ""))[0], sum(1 for r in recs if r["l"] == l),
-           html.escape(LIB_INFO.get(l, ("", ""))[1])) for l in libs)
+        '<li class="stack-item"><div class="stack-top">'
+        '<span><span class="sw" style="--c:%s"></span>%s</span><code>%s</code></div>'
+        '<div class="stack-dims"><span>z&nbsp; %g nm</span><span>thickness&nbsp; %g nm</span></div>'
+        '%s</li>'
+        % (c, n, g, z, t,
+           '<div class="stack-note">%s</div>' % html.escape(d) if d else "")
+        for n, g, c, z, t, d in STACK)
 
     page = TEMPLATE
     page = page.replace("__NCELLS__", str(len(recs)))
     page = page.replace("__NVID__", str(nvid))
     page = page.replace("__NLIB__", str(len(libs)))
     page = page.replace("__STACK__", stack_rows)
-    page = page.replace("__LIBS__", lib_rows)
     page = page.replace("__LIBOPTS__", "".join(
         '<option value="%s">%s</option>' % (l, l) for l in libs))
     page = page.replace("__DATA__", json.dumps(recs, separators=(",", ":")))
@@ -208,98 +224,137 @@ TEMPLATE = r"""<!doctype html>
   --line2:#d2cfc9;--fg:#16181d;--dim:#6b7280;--accent:#6d33ad;--good:#1a7f37;}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.6}
+.layout{display:grid;grid-template-columns:minmax(270px,305px) minmax(0,1fr);max-width:1820px;margin:0 auto}
+.page{min-width:0}
 .wrap{max-width:1500px;margin:0 auto;padding:0 26px}
 header{border-bottom:1px solid var(--line);padding:40px 0 26px}
 .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--accent);margin-bottom:12px}
 h1{font-family:var(--mono);font-size:clamp(22px,3.2vw,32px);font-weight:600;margin:0 0 10px;letter-spacing:-.015em}
-.lede{color:var(--dim);max-width:66ch;margin:0}
-nav{display:flex;gap:4px;margin-top:22px;flex-wrap:wrap}
-nav a{font-family:var(--mono);font-size:12px;color:var(--dim);text-decoration:none;
-  padding:7px 12px;border:1px solid var(--line);border-radius:6px}
-nav a:hover,nav a:focus-visible{color:var(--fg);border-color:var(--accent);outline:none}
 h2{font-family:var(--mono);font-size:12px;letter-spacing:.13em;text-transform:uppercase;
   color:var(--dim);font-weight:600;margin:44px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th{text-align:left;font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--dim);font-weight:600;padding:7px 10px;border-bottom:1px solid var(--line)}
-td{padding:7px 10px;border-bottom:1px solid var(--line)}
-td.m{font-family:var(--mono);font-size:12.5px}
-td.n{text-align:right;font-variant-numeric:tabular-nums}
-td.d{color:var(--dim);font-size:13px}
-.sw{width:11px;height:11px;border-radius:2px;background:var(--c);display:inline-block;
-  margin-right:8px;vertical-align:-1px}
-.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-.tblwrap table td:first-child,.tblwrap table th:first-child{padding-left:14px}
+.stack-sidebar{position:sticky;top:0;align-self:start;height:100vh;height:100dvh;overflow-y:auto;
+  background:var(--panel);border-right:1px solid var(--line);padding:18px 14px}
+.stack-sidebar h2{margin:0 0 7px;padding-bottom:7px}
+.stack-lede{color:var(--dim);font-size:10.5px;line-height:1.4;margin:0 0 10px}
+.stack-lede code{font-size:9.5px;word-break:break-word}
+.stack-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;
+  overflow:hidden;background:var(--bg)}
+.stack-item{padding:5px 8px;border-bottom:1px solid var(--line)}
+.stack-item:last-child{border-bottom:0}
+.stack-top{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-family:var(--mono);font-size:11px;color:var(--fg)}
+.stack-top code{font-size:9.5px;color:var(--dim);white-space:nowrap}
+.stack-dims{display:flex;justify-content:space-between;gap:8px;margin-top:2px;
+  color:var(--dim);font-family:var(--mono);font-size:9px;font-variant-numeric:tabular-nums}
+.stack-note{color:var(--dim);font-size:8.5px;line-height:1.25;margin:2px 0 0 19px}
+.sw{width:9px;height:9px;border-radius:2px;background:var(--c);display:inline-block;
+  margin-right:6px;vertical-align:-1px}
 .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 input[type=search],select{background:var(--panel);color:var(--fg);border:1px solid var(--line2);
   border-radius:7px;padding:9px 12px;font-family:var(--mono);font-size:13px;min-width:210px}
 input[type=search]:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px}
 .count{font-family:var(--mono);font-size:12px;color:var(--dim);margin-left:auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;
-  display:flex;flex-direction:column;cursor:pointer;text-align:left;color:inherit;font:inherit;padding:0;
-  transition:border-color .15s,transform .15s}
-.card:hover,.card:focus-visible{border-color:var(--accent);transform:translateY(-2px);outline:none}
+  display:flex;flex-direction:column;transition:border-color .15s,transform .15s}
+.card:hover,.card:focus-within{border-color:var(--accent);transform:translateY(-2px)}
+.card-open{appearance:none;background:transparent;border:0;color:inherit;font:inherit;padding:0;
+  text-align:left;display:flex;flex:1;flex-direction:column;min-width:0;cursor:pointer}
+.card-open:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .thumb{aspect-ratio:1/1;background:#000;position:relative}
 .thumb video{width:100%;height:100%;object-fit:cover;display:block}
 .pending{display:flex;align-items:center;justify-content:center;height:100%;color:#5b6472;
   font-family:var(--mono);font-size:11.5px;background:var(--panel2)}
-.cbody{padding:10px 12px 12px;border-top:1px solid var(--line)}
+.cbody{padding:10px 12px 12px;border-top:1px solid var(--line);width:100%;flex:1}
 .cname{font-family:var(--mono);font-size:12.5px;color:var(--accent);font-weight:600;word-break:break-all}
 .cfam{font-size:12.5px;color:var(--fg);margin-top:3px}
 .cmeta{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:5px;
   font-variant-numeric:tabular-nums}
+.csource{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.4;margin-top:8px;
+  padding-top:7px;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.csource span{color:var(--fg)}
+.card-actions{display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding:5px 9px}
+.card-download{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-decoration:none;
+  border-radius:4px;padding:2px 5px}
+.card-download:hover{color:var(--accent);background:var(--panel2)}
+.card-download:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 dialog{border:none;padding:0;background:transparent;width:100%;height:100%;max-width:none;
   max-height:none;margin:0;color:var(--fg)}
 dialog::backdrop{background:rgba(5,6,9,.93)}
-.modal{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;height:100%;
-  align-items:center;padding:26px;max-width:1250px;margin:0 auto}
-@media(max-width:820px){.modal{grid-template-columns:1fr;align-content:center}}
-.modal video{width:100%;max-height:78vh;background:#000;border:1px solid var(--line2);border-radius:7px}
-.info h3{font-family:var(--mono);font-size:15px;margin:0 0 4px;color:var(--accent);word-break:break-all}
-.info .fam{color:var(--fg);margin-bottom:16px}
-.info dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin:0}
-.info dt{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
-.info dd{margin:0;font-family:var(--mono);font-size:12.5px;word-break:break-all}
-.fn{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:9px 11px;
-  margin-top:14px;font-family:var(--mono);font-size:12.5px;line-height:1.7;overflow-x:auto}
-.fn i{color:var(--dim);font-style:normal}
+.modal{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,420px);gap:18px;height:100%;
+  align-items:center;padding:26px;max-width:1320px;margin:0 auto}
+.viewer{min-width:0}
+.modal video{width:100%;max-height:82vh;background:#000;border:1px solid var(--line2);border-radius:9px;
+  display:block}
+.info{background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:18px;
+  max-height:calc(100vh - 52px);overflow-y:auto}
+.info-head{padding-bottom:14px;border-bottom:1px solid var(--line)}
+.info .library{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);overflow-wrap:anywhere}
+.info h3{font-family:var(--mono);font-size:15px;line-height:1.35;margin:4px 0 2px;color:var(--accent);
+  overflow-wrap:anywhere}
+.info .fam{color:var(--fg);font-size:12.5px}
+.facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.fact{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 9px;min-width:0}
+.fact span,.section-title{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--dim)}
+.fact strong{display:block;margin-top:2px;font-family:var(--mono);font-size:11px;font-weight:500;
+  overflow-wrap:anywhere}
+.fact small{display:block;color:var(--dim);font-family:var(--mono);font-size:9.5px;margin-top:2px}
+.modal-section{margin-top:16px}
+.section-title{margin:0 0 7px}
+.pin-groups{display:grid;gap:7px}
+.pin-group{border:1px solid var(--line);border-left:3px solid var(--pin);border-radius:6px;padding:7px 8px;
+  background:var(--panel2)}
+.pin-input{--pin:#3fb950}.pin-output{--pin:#f0883e}.pin-io{--pin:#58a6ff}
+.pin-supply{--pin:#8f4fd8}.pin-unknown{--pin:#8b95a6}
+.pin-title{display:flex;justify-content:space-between;align-items:center;color:var(--dim);
+  font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em}
+.pin-title b{font-weight:500;color:var(--fg)}
+.pins{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.pins code{font-size:10.5px;color:var(--fg);border:1px solid var(--line);background:var(--bg);
+  padding:1px 5px;overflow-wrap:anywhere}
+.logic,.source{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px;
+  font-family:var(--mono);font-size:10.5px;line-height:1.55;overflow-wrap:anywhere}
+.logic div+div,.source div+div{border-top:1px solid var(--line);margin-top:5px;padding-top:5px}
+.logic i,.source i{color:var(--dim);font-style:normal;margin-right:5px}
+.empty{color:var(--dim);font-size:11.5px;border:1px dashed var(--line2);border-radius:6px;padding:8px 10px}
 .x{position:fixed;top:16px;right:18px;background:var(--panel);color:var(--fg);border:1px solid var(--line2);
-  border-radius:6px;width:34px;height:34px;font-size:17px;cursor:pointer}
+  border-radius:6px;width:34px;height:34px;font-size:17px;cursor:pointer;z-index:2}
 .x:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 footer{border-top:1px solid var(--line);margin-top:50px;padding:24px 0 60px;color:var(--dim);font-size:13px}
 footer p{max-width:72ch}
 code{font-family:var(--mono);font-size:12px;background:var(--panel2);padding:2px 5px;border-radius:4px}
+@media(max-width:1200px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){
+  .layout{display:block}.stack-sidebar{position:relative;height:auto;max-height:42vh;border-right:0;
+    border-bottom:1px solid var(--line)}
+  .stack-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stack-item:nth-child(odd){border-right:1px solid var(--line)}
+}
+@media(max-width:820px){
+  dialog{overflow-y:auto}.modal{display:block;height:auto;padding:56px 14px 20px}
+  .modal video{max-height:52vh;margin-bottom:12px}.info{max-height:none}
+}
+@media(max-width:620px){
+  .wrap{padding:0 16px}.grid,.stack-list{grid-template-columns:1fr}
+  .stack-item:nth-child(odd){border-right:0}
+}
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
 </style></head><body>
-<div class="wrap">
+<div class="layout">
+<aside class="stack-sidebar" aria-labelledby="stack">
+  <h2 id="stack">Layer stack</h2>
+  <p class="stack-lede">Nanometres above the substrate surface, from
+  <code>libs.tech/klayout/tech/d25/gf180mcu.lyd25</code>. These values render every cell.</p>
+  <ol class="stack-list">__STACK__</ol>
+</aside>
+<main class="page"><div class="wrap">
 <header>
   <div class="eyebrow">GlobalFoundries 0.18 µm · gf180mcuD · 5LM_1TM_11K</div>
   <h1>Placeable cell reference</h1>
-  <p class="lede">Every placeable cell in the gf180mcuD PDK — I/O, standard cells and macros —
-  with its footprint, pins and logic function read from the LEF and Liberty, and a 3D view
-  rendered from the GDS with the foundry's own layer heights.</p>
-  <nav>
-    <a href="#stack">Layer stack</a>
-    <a href="#libs">Libraries</a><a href="#cells">Cell browser</a>
-  </nav>
 </header>
-
-<h2 id="stack">Layer stack</h2>
-<p class="lede">Heights in nanometres above the substrate surface, from the PDK's own KLayout
-2.5D definition <code>libs.tech/klayout/tech/d25/gf180mcu.lyd25</code>. These are the values
-used to render every cell below.</p>
-<div class="tblwrap"><table>
-<tr><th>Layer</th><th>GDS</th><th>Height</th><th>Thickness</th><th>Note</th></tr>
-__STACK__
-</table></div>
-
-<h2 id="libs">Libraries</h2>
-<div class="tblwrap"><table>
-<tr><th>Library</th><th>Kind</th><th>Cells</th><th>Description</th></tr>
-__LIBS__
-</table></div>
 
 <h2 id="cells">Cell browser</h2>
 <div class="controls">
@@ -322,11 +377,12 @@ __LIBS__
   GDS3D. Explode distance is scaled per library: the offset is absolute in microns, so the
   value that suits a 350 µm I/O pad would throw a 3 µm standard cell off screen.</p>
 </footer>
+</div></main>
 </div>
 
 <dialog id="dlg"><button class="x" id="x" aria-label="Close">×</button>
   <div class="modal">
-    <div><video id="mv" loop muted playsinline controls></video></div>
+    <div class="viewer"><video id="mv" loop muted playsinline controls></video></div>
     <div class="info" id="info"></div>
   </div>
 </dialog>
@@ -372,45 +428,82 @@ function render(){
   grid.innerHTML="";
   const frag=document.createDocumentFragment();
   for(const r of sel){
-    const b=document.createElement("button"); b.className="card";
-    b.setAttribute("aria-label","Open "+r.s);
+    const card=document.createElement("article"); card.className="card";
+    const b=document.createElement("button"); b.className="card-open";
+    b.setAttribute("aria-label","Open "+r.s+" details");
     const thumb = r.v
       ? '<video data-v="'+r.v+'" loop muted playsinline preload="none"></video>'
       : '<div class="pending">rendering…</div>';
     b.innerHTML='<div class="thumb">'+thumb+'</div><div class="cbody">'+
       '<div class="cname">'+r.s+'</div><div class="cfam">'+(r.fam||"&nbsp;")+'</div>'+
-      '<div class="cmeta">'+(r.w?r.w.toFixed(2)+" × "+r.h.toFixed(2)+" µm":"")+
-      (r.area?" · "+r.area.toFixed(1)+" µm²":"")+'</div></div>';
+      '<div class="cmeta">'+(r.w?r.w.toFixed(3)+" × "+r.h.toFixed(3)+" µm":"")+
+      (r.area?" · "+r.area.toFixed(1)+" µm²":"")+'</div>'+
+      '<div class="csource">GDS from gf180mcuD/<br><span>'+r.g+'</span></div></div>';
     b.addEventListener("click",()=>open_(r));
-    frag.appendChild(b);
+    card.appendChild(b);
+    if(r.v){
+      const actions=document.createElement("div"); actions.className="card-actions";
+      const dl=document.createElement("a"); dl.className="card-download";
+      dl.href=VBASE+r.v; dl.download=r.s+".mp4";
+      dl.setAttribute("aria-label","Download "+r.s+" MP4");
+      dl.textContent="↓ download MP4";
+      dl.addEventListener("click",e=>downloadVideo(e,r));
+      actions.appendChild(dl); card.appendChild(actions);
+    }
+    frag.appendChild(card);
   }
   grid.appendChild(frag);
   grid.querySelectorAll("video[data-v]").forEach(v=>io.observe(v));
 }
+async function downloadVideo(e,r){
+  e.preventDefault();
+  const link=e.currentTarget, label=link.textContent;
+  link.textContent="downloading…";
+  try{
+    const response=await fetch(VBASE+r.v);
+    if(!response.ok) throw new Error("HTTP "+response.status);
+    const url=URL.createObjectURL(await response.blob());
+    const save=document.createElement("a");
+    save.href=url; save.download=r.s+".mp4"; save.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(_){ window.open(VBASE+r.v,"_blank","noopener"); }
+  finally{ link.textContent=label; }
+}
 const dlg=document.getElementById("dlg"), mv=document.getElementById("mv"),
       info=document.getElementById("info");
+function pinGroup(label,pins,klass){
+  if(!pins || !pins.length) return "";
+  return '<div class="pin-group '+klass+'"><div class="pin-title"><span>'+label+
+    '</span><b>'+pins.length+'</b></div><div class="pins">'+
+    pins.map(p=>'<code>'+p+'</code>').join("")+'</div></div>';
+}
 function open_(r){
   if(r.v){ mv.src=VBASE+r.v; mv.style.display=""; mv.play().catch(()=>{}); }
   else { mv.removeAttribute("src"); mv.style.display="none"; }
   let fn="";
-  for(const [p,e] of Object.entries(r.fn||{})) fn+='<div><i>'+p+'</i> = '+e+'</div>';
-  const src="gf180mcuD/libs.ref/"+r.l+"/";
-  info.innerHTML='<h3>'+r.n+'</h3><div class="fam">'+(r.fam||"")+'</div><dl>'+
-    '<dt>Library</dt><dd>'+r.l+'</dd>'+
-    (r.w?'<dt>Size</dt><dd>'+r.w.toFixed(3)+' × '+r.h.toFixed(3)+' µm</dd>':'')+
-    (r.area?'<dt>Area</dt><dd>'+r.area.toFixed(3)+' µm²</dd>':'')+
-    (r.site?'<dt>Site</dt><dd>'+r.site+'</dd>':'')+
-    (r.i.length?'<dt>Inputs</dt><dd>'+r.i.join(", ")+'</dd>':'')+
-    (r.o.length?'<dt>Outputs</dt><dd>'+r.o.join(", ")+'</dd>':'')+
-    ((r.b||[]).length?'<dt>Bidirectional</dt><dd>'+r.b.join(", ")+'</dd>':'')+
-    (r.p.length?'<dt>Supplies</dt><dd>'+r.p.join(", ")+'</dd>':'')+
-    '</dl>'+(fn?'<div class="fn">'+fn+'</div>':'')+
-    (r.k==="prim"
-      ? '<div class="fn"><i>source</i> '+src+'gds/ — per-device GDS, no LEF/Liberty</div>'
-      : '<div class="fn"><i>source</i> '+src+'<br>'+
-        '<i>pins</i> lef/'+r.l+'.lef · <i>area, function</i> lib/ · '+
-        '<i>3D view</i> gds/'+r.l+'.gds</div>')+
-    (r.v?'':'<div class="fn"><i>3D view still rendering</i></div>');
+  for(const [p,e] of Object.entries(r.fn||{})) fn+='<div><i>'+p+' =</i> '+e+'</div>';
+  const src="libs.ref/"+r.l+"/";
+  let facts="";
+  if(r.w) facts+='<div class="fact"><span>Dimensions</span><strong>'+r.w.toFixed(3)+' × '+
+    r.h.toFixed(3)+' µm</strong><small>'+Math.round(r.w*1000)+' × '+Math.round(r.h*1000)+' nm</small></div>';
+  if(r.area) facts+='<div class="fact"><span>Area</span><strong>'+r.area.toFixed(3)+' µm²</strong></div>';
+  if(r.site) facts+='<div class="fact"><span>Site</span><strong>'+r.site+'</strong></div>';
+  const pins=pinGroup("Inputs",r.i,"pin-input")+pinGroup("Outputs",r.o,"pin-output")+
+    pinGroup("Bidirectional",r.b||[],"pin-io")+pinGroup("Supplies",r.p,"pin-supply")+
+    pinGroup("Unspecified in LEF",r.u||[],"pin-unknown");
+  const sources=r.k==="prim"
+    ? '<div><i>GDS</i> gf180mcuD/'+r.g+'</div><div><i>Metadata</i> layout only — no LEF or Liberty</div>'
+    : '<div><i>GDS</i> gf180mcuD/'+r.g+'</div><div><i>LEF · dimensions, site, pins</i> gf180mcuD/'+
+      src+'lef/</div><div><i>Liberty · area, logic</i> gf180mcuD/'+src+'lib/</div>';
+  info.innerHTML='<div class="info-head"><div class="library">'+r.l+'</div><h3>'+r.n+
+    '</h3><div class="fam">'+(r.fam||"")+'</div></div>'+
+    (facts?'<div class="facts">'+facts+'</div>':'')+
+    '<section class="modal-section"><h4 class="section-title">Pins · LEF</h4><div class="pin-groups">'+
+      (pins||'<div class="empty">No LEF pin metadata for this layout-only cell.</div>')+'</div></section>'+
+    (fn?'<section class="modal-section"><h4 class="section-title">Logic · Liberty</h4><div class="logic">'+
+      fn+'</div></section>':'')+
+    '<section class="modal-section"><h4 class="section-title">PDK sources</h4><div class="source">'+sources+
+      (r.v?'':'<div><i>3D view</i> still rendering</div>')+'</div></section>';
   dlg.showModal();
 }
 function close_(){ dlg.close(); mv.pause(); mv.removeAttribute("src"); }
