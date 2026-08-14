@@ -248,8 +248,8 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:3
   --line2:#cfd1cc;--fg:#16181d;--dim:#5c6472;--accent:#b1541f;--good:#2f7d4f;--canvas:#fcfcfa}
 
 body{font:16px/1.6 var(--sans);-webkit-text-size-adjust:100%}
-.layout{grid-template-columns:minmax(260px,285px) minmax(0,1fr);max-width:1580px}
-.wrap{max-width:1240px;padding:2.5rem 1.25rem 5rem}
+.layout{grid-template-columns:minmax(255px,275px) minmax(0,1fr);max-width:1640px}
+.wrap{max-width:1300px;padding:2.5rem 1.25rem 5rem}
 .page-head{border:0;padding:0;margin:0 0 2rem}
 .page-head h1{font-family:var(--sans);font-size:1.9rem;line-height:1.25;margin:0 0 .4rem;
   letter-spacing:-.02em}
@@ -282,35 +282,51 @@ input[type=search]:focus,select:focus{outline:2px solid color-mix(in srgb,var(--
   outline-offset:1px;border-color:var(--accent)}
 .count{font-size:.78rem;margin-left:auto;align-self:center;white-space:nowrap}
 
-.grid{gap:.8rem}
+.grid{gap:.7rem}
 .card{border-color:var(--line);border-radius:10px;transition:border-color .15s,box-shadow .15s}
 .card:hover,.card:focus-within{border-color:var(--accent);box-shadow:0 5px 18px rgba(22,24,29,.07);
   transform:none}
 .card-open{border-radius:10px 10px 0 0}
-.thumb{background:var(--canvas)}
+.thumb{aspect-ratio:1.08/1;background:var(--canvas)}
 .pending{background:var(--canvas);color:var(--dim);font-size:.72rem}
-.cbody{padding:.7rem .9rem .8rem}
+.cbody{padding:.55rem .75rem .65rem}
 .cname{color:var(--fg);font-size:.8rem;letter-spacing:-.01em}
-.cfam{font-size:.82rem;margin-top:.2rem}
-.cmeta{font-size:.7rem;margin-top:.35rem}
-.csource{font-size:.64rem;margin-top:.55rem;padding-top:.5rem}
+.cfam{font-size:.78rem;margin-top:.1rem}
+.cmeta{font-size:.7rem;margin-top:.2rem}
+.csource{font-size:.64rem;line-height:1.3;margin-top:.4rem;padding-top:.35rem}
 
 button,.v3btn,.x{border-color:var(--line);border-radius:6px;background:transparent;color:var(--fg)}
 .v3btn{font-family:var(--sans);font-size:.78rem;height:30px;padding:.25rem .7rem}
 .v3btn:hover,.x:hover{border-color:var(--accent);color:var(--accent)}
 .v3name{height:auto;color:var(--fg);font-size:.8rem;padding:.15rem 0}
-.v3bar,.info-bar{min-height:38px}
-.v3bar{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.2rem .5rem}
+.v3bar,.info-bar{min-height:36px}
+.v3bar{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:.15rem .5rem}
 .info-bar{border-color:var(--line);border-radius:8px;background:var(--panel);padding-left:.75rem}
 .v3lg{border-color:var(--line);border-radius:999px;background:var(--panel);padding:.2rem .55rem .2rem .3rem}
 .v3explode{font-family:var(--sans);font-size:.78rem}
 .v3xv,.v3lod{font-size:.68rem}
-.modal{padding:1rem;gap:0 1rem}
+.modal{padding:.85rem;grid-template-columns:minmax(0,1fr) minmax(340px,400px);gap:0 .85rem}
+.modal .viewer{gap:.45rem}
+.info-col{gap:.45rem}
 .modal canvas{border-color:var(--line);border-radius:10px;background:var(--canvas)}
-.info{border-color:var(--line);border-radius:10px;padding:1rem}
+.info{border-color:var(--line);border-radius:10px;padding:.8rem .9rem;font-size:.78rem;line-height:1.45}
+.info-head{padding-bottom:.65rem}
+.info h3{color:var(--fg);font-size:.9rem;line-height:1.3;margin:.1rem 0}
+.info .fam{color:var(--dim);font-size:.74rem}
+.facts{gap:.45rem;margin-top:.7rem}
 .fact,.pin-group,.logic,.source,.empty{border-color:var(--line);border-radius:8px;background:var(--panel2)}
-.info h3{color:var(--fg)}
-.section-title{color:var(--accent);letter-spacing:0;text-transform:lowercase;font-size:.72rem}
+.fact{padding:.45rem .55rem}
+.fact span,.section-title{font-size:.62rem}
+.fact strong{font-size:.7rem}
+.fact small{font-size:.61rem}
+.modal-section{margin-top:.75rem}
+.section-title{color:var(--accent);letter-spacing:0;text-transform:lowercase;font-size:.72rem;margin-bottom:.35rem}
+.pin-groups{gap:.4rem}
+.pin-group{padding:.4rem .5rem}
+.pins{margin-top:.3rem}
+.pins code{font-size:.66rem;padding:.05rem .3rem}
+.logic,.source{padding:.45rem .6rem;font-size:.67rem;line-height:1.45}
+.logic div+div,.source div+div{margin-top:.35rem;padding-top:.35rem}
 .pin-input{--pin:#5ec98a}.pin-output{--pin:#e8834a}.pin-io{--pin:#5aa7d9}.pin-supply{--pin:#a881d4}
 dialog::backdrop{background:rgba(10,12,15,.88);backdrop-filter:blur(3px)}
 
@@ -402,6 +418,7 @@ CELLS.forEach(r => r.k = kindOf(r));
 
 const COL={"COMP": "#2f7a4f", "Poly2": "#b03060", "Contact": "#7a7a7a", "Metal1": "#3d7fd6", "Via1": "#9aa5b1", "Metal2": "#22a3a3", "Via2": "#9aa5b1", "Metal3": "#e0a01a", "Via3": "#b9a06a", "Metal4": "#e5674d", "FuseTop": "#f2d94e", "Via4": "#c98a7a", "Metal5": "#8f4fd8", "Pad": "#9ea1a8"};
 const ZORDER=["COMP","Poly2","Contact","Metal1","Via1","Metal2","Via2","Metal3","Via3","Metal4","FuseTop","Via4","Metal5","Pad"];
+const Z_COMPACT=0.78;
 const PBASE="prisms/";
 const VIAL=["Contact","Via1","Via2","Via3","Via4"];
 const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -449,10 +466,10 @@ const GLR=(function(){
   if(!gl)return null;
   const vs=`#version 300 es
   layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNrm; layout(location=2) in vec3 aCol;
-  uniform mat4 uM; uniform vec2 uRot; uniform float uLine; uniform float uZoff; uniform float uBright;
+  uniform mat4 uM; uniform vec2 uRot; uniform float uLine; uniform float uZoff; uniform float uZScale; uniform float uBright;
   out vec3 vCol;
   void main(){
-    vec4 clip=uM*vec4(aPos.x,aPos.y,aPos.z+uZoff,1.0);
+    vec4 clip=uM*vec4(aPos.x,aPos.y,aPos.z*uZScale+uZoff,1.0);
     clip.z-=uLine;
     float shade;
     if(aNrm.z>0.5){ shade=1.12; }
@@ -477,6 +494,7 @@ const GLR=(function(){
     R.prog=prog;
     R.uM=gl.getUniformLocation(prog,"uM");R.uRot=gl.getUniformLocation(prog,"uRot");
     R.uLine=gl.getUniformLocation(prog,"uLine");R.uZoff=gl.getUniformLocation(prog,"uZoff");
+    R.uZScale=gl.getUniformLocation(prog,"uZScale");
     R.uBright=gl.getUniformLocation(prog,"uBright");
     gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);
   };
@@ -500,8 +518,8 @@ function pinBox(pin,off){
     li=Math.max(li,ZORDER.indexOf(r[0]));
   }
   if(minx>maxx)return null;
-  return {box:{cx:(minx+maxx)/2,cy:(miny+maxy)/2,cz:(zb+zt)/2+li*off,
-    Rad:Math.max(1.2,Math.hypot(maxx-minx,maxy-miny)*1.6),Zh:Math.max(1.2,zt-zb)},li:li};
+  return {box:{cx:(minx+maxx)/2,cy:(miny+maxy)/2,cz:(zb+zt)/2*Z_COMPACT+li*off,
+    Rad:Math.max(1.2,Math.hypot(maxx-minx,maxy-miny)*1.6),Zh:Math.max(1.2,(zt-zb)*Z_COMPACT)},li:li};
 }
 const HEXPTS=[];for(let i=0;i<6;i++){const a=Math.PI/180*(60*i+30);HEXPTS.push([Math.cos(a),Math.sin(a)]);}
 function expand(d,skipLayers){
@@ -652,7 +670,7 @@ function fitBox(st,hidden,off){
     any=true;
     if(a.minx<minx)minx=a.minx; if(a.maxx>maxx)maxx=a.maxx;
     if(a.miny<miny)miny=a.miny; if(a.maxy>maxy)maxy=a.maxy;
-    const z0=a.z0+li*off,z1=a.z1+li*off;
+    const z0=a.z0*Z_COMPACT+li*off,z1=a.z1*Z_COMPACT+li*off;
     if(z0<zb)zb=z0; if(z1>zt)zt=z1;
   }
   if(!any){minx=0;maxx=1;miny=0;maxy=1;zb=0;zt=1;}
@@ -873,6 +891,7 @@ class GLView{
     gl.useProgram(R.prog);
     gl.uniformMatrix4fv(R.uM,false,M);
     gl.uniform2f(R.uRot,ca,sa);
+    gl.uniform1f(R.uZScale,Z_COMPACT);
     gl.uniform1f(R.uBright,1);
     const bind=vbo=>{
       gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
@@ -1069,13 +1088,13 @@ class PainterView{
       for(const r of this.hl){
         const z=ZZ[r[0]];if(!z)continue;
         const li=ZORDER.indexOf(r[0]);
-        faces.push({hl:!0,a:a,p:[[r[1],r[2]],[r[3],r[2]],[r[3],r[4]],[r[1],r[4]]],z:z[1]+li*off+0.04});
+        faces.push({hl:!0,a:a,p:[[r[1],r[2]],[r[3],r[2]],[r[3],r[4]],[r[1],r[4]]],z:z[1]*Z_COMPACT+li*off+0.04});
       }
     }
     for(const pr of d.prisms){
       if(this.hidden.has(pr.l))continue;
       const zo=ZORDER.indexOf(pr.l)*off;
-      const z0=pr.z0+zo-cz,z1=pr.z1+zo-cz,n=pr.p.length,base=COL[pr.l]||"#888";
+      const z0=pr.z0*Z_COMPACT+zo-cz,z1=pr.z1*Z_COMPACT+zo-cz,n=pr.p.length,base=COL[pr.l]||"#888";
       const proj=[];
       for(let i=0;i<n;i++){
         const x=pr.p[i][0]-cx,y=pr.p[i][1]-cy;
@@ -1263,7 +1282,7 @@ function render(){
     b.setAttribute("aria-label","Open "+r.s+" details");
     b.innerHTML='<div class="thumb"><canvas data-p="'+r.n+'.json"></canvas>'+
       '<div class="pending">loading\u2026</div></div><div class="cbody">'+
-      '<div class="cname">'+r.s+'</div><div class="cfam">'+(r.fam||"&nbsp;")+'</div>'+
+      '<div class="cname">'+r.s+'</div>'+(r.fam?'<div class="cfam">'+r.fam+'</div>':'')+
       '<div class="cmeta">'+(r.w?r.w.toFixed(3)+" × "+r.h.toFixed(3)+" µm":"")+
       (r.area?" · "+r.area.toFixed(1)+" µm²":"")+'</div>'+
       '<div class="csource">GDS from gf180mcuD/<br><span>'+r.g+'</span></div></div>';
