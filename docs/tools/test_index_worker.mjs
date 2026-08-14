@@ -89,8 +89,21 @@ const modal = await page.evaluate(() => ({
   canvas: [modalView.cv.width, modalView.cv.height],
   hasBuffers: !!(modalView.vboT && modalView.vboL),
   workerPrepared: !!(modalView.d.stats && modalView.d.present && !modalView.d.prisms),
+  edgeRatio: Object.values(modalView.lineRange).reduce((n, range) => n + range[1], 0) /
+    Object.values(modalView.triRange).reduce((n, range) => n + range[1], 0),
   hash: (writeHash(), location.hash),
 }));
+const pinCoverage = await page.evaluate(async () => {
+  const pins = [...document.querySelectorAll('.pins code[data-pin]')];
+  const misses = [];
+  for (const pin of pins) {
+    pin.click();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    if (!pin.classList.contains('haspin') || !modalView.vboH || !modalView.hlN)
+      misses.push(pin.dataset.pin);
+  }
+  return {total: pins.length, misses};
+});
 
 console.log('worker urls     :', workers);
 console.log('renderer badge  :', firstState.badge);
@@ -102,6 +115,8 @@ console.log('shared hover    :', hoverState.count, 'visible ·', hoverState.allS
 console.log('frame gaps      : max', scrollTiming.max.toFixed(1), 'ms · p95',
   scrollTiming.p95.toFixed(1), 'ms');
 console.log('modal mesh      :', modal.canvas, modal.workerPrepared && modal.hasBuffers ? 'PASS' : 'FAIL');
+console.log('complete edges  :', modal.edgeRatio.toFixed(2), 'line/triangle vertices');
+console.log('LEF pin locate  :', pinCoverage.total, 'pins ·', pinCoverage.misses.length ? pinCoverage.misses : 'PASS');
 console.log('console errors  :', errors.length ? errors : 'none');
 
 const failures = [];
@@ -113,6 +128,8 @@ if (!hoverState.count || !hoverState.allStopped || !allResumed) failures.push('s
 if (hoverState.downloadLinks) failures.push('geometry download links remain');
 if (cachedReload > 1000) failures.push(`cached reload took ${cachedReload} ms`);
 if (!modal.workerPrepared || !modal.hasBuffers) failures.push('modal did not use transferred mesh buffers');
+if (modal.edgeRatio < 0.6) failures.push('modal mesh does not contain complete prism edges');
+if (!pinCoverage.total || pinCoverage.misses.length) failures.push(`LEF pins missing geometry: ${pinCoverage.misses}`);
 if (!modal.hash.includes('c=gf180mcu_fd_sc_mcu7t5v0__inv_1')) failures.push('modal hash state failed');
 if (errors.length) failures.push('browser console errors');
 await browser.close();

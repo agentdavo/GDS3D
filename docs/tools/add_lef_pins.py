@@ -21,15 +21,23 @@ except ImportError:
 DOCS = Path(__file__).resolve().parents[1]
 PDK = Path.home() / "chdl/ext/gf180mcu-project-template/gf180mcu/ciel/gf180mcu/versions/f6eeac7dad085ffcc829ccfd721f7b4ce39edcf7/gf180mcuD"
 
-KEEP_LAYERS = {"COMP", "Poly2", "Metal1", "Metal2", "Metal3", "Metal4", "Metal5"}
+KEEP_LAYERS = {
+    "Nwell", "Pwell", "COMP", "Poly2",
+    "Metal1", "Metal2", "Metal3", "Metal4", "Metal5",
+}
 
 def parse_lef(text):
     """MACRO -> {pin -> [(layer,x0,y0,x1,y1)...]}"""
     out = {}
-    for mm in re.finditer(r"\bMACRO\s+(\S+)(.*?)\bEND\s+\1\b", text, re.S):
+    block = re.S | re.M
+    for mm in re.finditer(
+            r"^[ \t]*MACRO[ \t]+(\S+)[ \t]*\r?$(.*?)^[ \t]*END[ \t]+\1[ \t]*\r?$",
+            text, block):
         name, body = mm.group(1), mm.group(2)
         pins = {}
-        for pm in re.finditer(r"\bPIN\s+(\S+)(.*?)\bEND\s+\1\b", body, re.S):
+        for pm in re.finditer(
+                r"^[ \t]*PIN[ \t]+(\S+)[ \t]*\r?$(.*?)^[ \t]*END[ \t]+\1[ \t]*\r?$",
+                body, block):
             pname, pbody = pm.group(1), pm.group(2)
             rects = []
             cur = None

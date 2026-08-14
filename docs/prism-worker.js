@@ -22,7 +22,7 @@ self.onmessage = async event => {
     const data = expand(raw, msg.skipLayers || []);
     if (!data || !data.prisms) throw new Error("geometry payload is empty");
     const prepared = await prepare(data, raw.pins || [], msg.order, msg.colors,
-      msg.includePrisms, controller.signal);
+      msg.includePrisms, msg.completeEdges, controller.signal);
     self.postMessage({type: "result", id: msg.id, prepared},
       [prepared.tris.buffer, prepared.lines.buffer]);
   } catch (error) {
@@ -72,7 +72,7 @@ function expand(data, skipLayers) {
   return {w: data.w, h: data.h, zmax: data.zmax, lod: data.lod, prisms};
 }
 
-async function prepare(data, pins, order, colors, includePrisms, signal) {
+async function prepare(data, pins, order, colors, includePrisms, completeEdges, signal) {
   const stats = {}, grouped = new Map(order.map(layer => [layer, []]));
   for (const prism of data.prisms) {
     if (grouped.has(prism.l)) grouped.get(prism.l).push(prism);
@@ -112,9 +112,15 @@ async function prepare(data, pins, order, colors, includePrisms, signal) {
         ];
         for (const vertex of side) triangles.push(
           vertex[0], vertex[1], vertex[2], nx, ny, 0, color[0], color[1], color[2]);
-        lines.push(
-          a[0], a[1], prism.z1, 0, 0, 1, color[0] * 0.3, color[1] * 0.3, color[2] * 0.3,
-          b[0], b[1], prism.z1, 0, 0, 1, color[0] * 0.3, color[1] * 0.3, color[2] * 0.3);
+        const edgeColor = [0.16, 0.17, 0.19];
+        const edge = (p, q) => lines.push(
+          p[0], p[1], p[2], 0, 0, 1, edgeColor[0], edgeColor[1], edgeColor[2],
+          q[0], q[1], q[2], 0, 0, 1, edgeColor[0], edgeColor[1], edgeColor[2]);
+        edge([a[0], a[1], prism.z1], [b[0], b[1], prism.z1]);
+        if (completeEdges) {
+          edge([a[0], a[1], prism.z0], [b[0], b[1], prism.z0]);
+          edge([a[0], a[1], prism.z0], [a[0], a[1], prism.z1]);
+        }
       }
       for (const index of earcut(prism.p)) {
         const point = prism.p[index];

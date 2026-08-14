@@ -345,6 +345,7 @@ code{border-radius:4px}
 a{color:var(--accent)}
 .pins code.haspin{cursor:pointer}
 .pins code.haspin:hover{border-color:var(--accent);color:var(--accent)}
+.pins code.nopin{color:var(--dim);border-style:dashed;cursor:help}
 ::selection{background:var(--accent);color:#fff}
 
 @media(max-width:850px){
@@ -506,12 +507,15 @@ const ZZ={"COMP":[-0.3,0],"Poly2":[0,0.2],"Contact":[0,0.86],"Metal1":[0.86,1.41
  "Via1":[1.41,2.01],"Metal2":[2.01,2.56],"Via2":[2.56,3.16],"Metal3":[3.16,3.71],
  "Via3":[3.71,4.31],"Metal4":[4.31,4.86],"FuseTop":[4.9,5.2],"Via4":[4.86,5.76],
  "Metal5":[5.76,6.95],"Pad":[6.95,7.25]};
+// Well pins are not part of the rendered stack; draw their LEF annotation just
+// above Poly2 so the selected region remains visible without inventing a layer.
+const PIN_Z={...ZZ,"Nwell":[0.22,0.24],"Pwell":[0.22,0.24]};
 function lerpBox(a,b,k){return {cx:a.cx+(b.cx-a.cx)*k,cy:a.cy+(b.cy-a.cy)*k,
   cz:a.cz+(b.cz-a.cz)*k,Rad:a.Rad+(b.Rad-a.Rad)*k,Zh:a.Zh+(b.Zh-a.Zh)*k};}
 function pinBox(pin,off){
   let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,zb=1e9,zt=-1e9,li=0;
   for(const r of pin.s){
-    const z=ZZ[r[0]];if(!z)continue;
+    const z=PIN_Z[r[0]];if(!z)continue;
     minx=Math.min(minx,r[1]);miny=Math.min(miny,r[2]);
     maxx=Math.max(maxx,r[3]);maxy=Math.max(maxy,r[4]);
     zb=Math.min(zb,z[0]);zt=Math.max(zt,z[1]);
@@ -581,7 +585,8 @@ const GEOMETRY_POOL=(function(){
       if(!job)break;
       slot.busy=job.id;job.slot=slot;
       slot.worker.postMessage({type:"load",id:job.id,url:job.url,
-        includePrisms:job.includePrisms,skipLayers:job.skipLayers,order:ZORDER,colors:COL});
+        includePrisms:job.includePrisms,completeEdges:!job.skipLayers.length,
+        skipLayers:job.skipLayers,order:ZORDER,colors:COL});
     }
     if(!slots.some(slot=>!slot.dead)){
       while(queue.length){const job=queue.shift();jobs.delete(job.id);
@@ -746,8 +751,11 @@ class GLView{
             const v=[[a[0],a[1],pr.z0],[b[0],b[1],pr.z0],[b[0],b[1],pr.z1],
                      [a[0],a[1],pr.z0],[b[0],b[1],pr.z1],[a[0],a[1],pr.z1]];
             for(const q of v)tris.push(q[0],q[1],q[2],nx,ny,0,col[0],col[1],col[2]);
-            lines.push(a[0],a[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3,
-                       b[0],b[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3);
+            const ec=[0.16,0.17,0.19];
+            const edge=(p,q)=>lines.push(p[0],p[1],p[2],0,0,1,...ec,q[0],q[1],q[2],0,0,1,...ec);
+            edge([a[0],a[1],pr.z1],[b[0],b[1],pr.z1]);
+            edge([a[0],a[1],pr.z0],[b[0],b[1],pr.z0]);
+            edge([a[0],a[1],pr.z0],[a[0],a[1],pr.z1]);
           }
           for(const k of earcut(pr.p)){
             const q=pr.p[k];tris.push(q[0],q[1],pr.z1,0,0,1,col[0],col[1],col[2]);
@@ -941,7 +949,7 @@ class GLView{
     if(!pb)return;
     const tris=[];
     for(const r of pin.s){
-      const z=ZZ[r[0]];if(!z)continue;
+      const z=PIN_Z[r[0]];if(!z)continue;
       const g=Math.max(0.05,Math.min(0.35,0.08*Math.min(r[3]-r[1],r[4]-r[2])));
       const x0=r[1]-g,y0=r[2]-g,x1=r[3]+g,y1=r[4]+g;
       const zl=z[0]-0.03,zh=z[1]+0.03,C=[1,0.78,0.12];
@@ -1086,7 +1094,7 @@ class PainterView{
     if(this.hl&&(this.focus||this.anim||_tnow<(this.flashUntil||0))){
       const a=_tnow<(this.flashUntil||0)?0.5+0.35*Math.sin(_tnow/90):0.65;
       for(const r of this.hl){
-        const z=ZZ[r[0]];if(!z)continue;
+        const z=PIN_Z[r[0]];if(!z)continue;
         const li=ZORDER.indexOf(r[0]);
         faces.push({hl:!0,a:a,p:[[r[1],r[2]],[r[3],r[2]],[r[3],r[4]],[r[1],r[4]]],z:z[1]*Z_COMPACT+li*off+0.04});
       }
@@ -1357,10 +1365,15 @@ function open_(r,hp){
     const oreq=modalView.request.bind(modalView);
     modalView.request=function(){oreq();queueHash();};
     const pmap={};
-    for(const pp of d.pins||[])pmap[pp.n]=pp;
+    for(const pp of d.pins||[]){
+      // Legacy pin exports could drop a bus name's final bracket because the
+      // LEF block regex backtracked (A[5] became A[5). Accept those cached files.
+      const pn=/\[[^\]]+$/.test(pp.n)?pp.n+"]":pp.n;
+      pmap[pn]=pn===pp.n?pp:{...pp,n:pn};
+    }
     info.querySelectorAll("code[data-pin]").forEach(el=>{
       const pp=pmap[el.dataset.pin];
-      if(!pp)return;
+      if(!pp){el.classList.add("nopin");el.title="No rendered LEF geometry for this pin";return;}
       el.classList.add("haspin");el.title="locate pin";
       el.addEventListener("click",()=>{
         if(!modalView)return;
