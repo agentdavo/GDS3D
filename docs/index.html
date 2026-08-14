@@ -135,6 +135,7 @@ code{font-family:var(--mono);font-size:12px;background:var(--panel2);padding:2px
 }
 @media(prefers-reduced-motion:reduce){.card{transition:none}.card:hover{transform:none}}
 
+.card{content-visibility:auto;contain-intrinsic-size:0 390px}
 .thumb{position:relative}
 .thumb canvas{width:100%;height:100%;display:block;cursor:grab;position:relative;z-index:1;touch-action:none}
 .thumb .pending{position:absolute;inset:0;pointer-events:none;z-index:0}
@@ -379,10 +380,9 @@ a{color:var(--accent)}
 <footer>
   <p><strong>703 cells</strong> across 11 libraries; 703 rendered so far.
   Every card is live geometry — drag to orbit, open for layers and explode view.</p>
-  <p>Cells render as per-layer merged prisms extruded with the lyd25 z-stack — WebGL2 (shared context,
-  depth-buffered, blitted per card; painter's-algorithm canvas fallback), no libraries. Geometry loads only while a card is near the viewport and is
-  dropped when it scrolls away. Very large macros are level-of-detail capped (largest shapes kept)
-  and say so in their viewer. The spin-video edition remains at <a href="index.html">index.html</a>.</p>
+  <p>Workers fetch, parse, expand and triangulate prism geometry away from the UI thread. Typed meshes feed
+  one shared, depth-buffered WebGL2 context, while visible card animations share a frame budget and stop
+  offscreen. A painter's-algorithm canvas fallback remains available when WebGL2 is unavailable.</p>
 </footer>
 </div></main>
 </div>
@@ -413,6 +413,37 @@ const ZORDER=["COMP","Poly2","Contact","Metal1","Via1","Metal2","Via2","Metal3",
 const PBASE="prisms/";
 const VIAL=["Contact","Via1","Via2","Via3","Via4"];
 const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// All auto-rotating views share one frame budget. Card previews run at a
+// deliberately modest cadence; the modal remains responsive at display rate.
+const SPIN_FRAMES=(function(){
+  const views=new Set();let raf=0;
+  function schedule(){if(!raf&&!document.hidden&&views.size)raf=requestAnimationFrame(tick);}
+  function tick(now){
+    raf=0;const started=performance.now();let drew=0;
+    for(const view of [...views]){
+      if(!view.spin||!view.d||!view.cv.isConnected){views.delete(view);continue;}
+      const fps=view.o.fps||20;
+      if(now<(view._nextSpin||0))continue;
+      // Leave roughly half the frame to input, layout and paint. If one model
+      // exhausts the budget, another gets the next animation frame.
+      if(drew&&performance.now()-started>7)continue;
+      const elapsed=Math.min(100,Math.max(0,now-(view._spinAt||now)));
+      view._spinAt=now;view._nextSpin=now+1000/fps;
+      view.az+=elapsed*0.00027;view.draw();drew++;
+      if(view.o.onNav&&now-(view._ht||0)>600){view._ht=now;view.o.onNav();}
+    }
+    schedule();
+  }
+  document.addEventListener("visibilitychange",()=>{
+    if(document.hidden&&raf){cancelAnimationFrame(raf);raf=0;}
+    else schedule();
+  });
+  return {
+    add(view){views.add(view);view._spinAt=0;view._nextSpin=0;schedule();},
+    delete(view){views.delete(view);if(!views.size&&raf){cancelAnimationFrame(raf);raf=0;}},
+  };
+})();
 
 function shade(hex,f){const n=parseInt(hex.slice(1),16),r=(n>>16)&255,g=(n>>8)&255,b=n&255;
   return "rgb("+Math.min(255,r*f|0)+","+Math.min(255,g*f|0)+","+Math.min(255,b*f|0)+")";}
@@ -479,10 +510,15 @@ function pinBox(pin,off){
     Rad:Math.max(1.2,Math.hypot(maxx-minx,maxy-miny)*1.6),Zh:Math.max(1.2,zt-zb)},li:li};
 }
 const HEXPTS=[];for(let i=0;i<6;i++){const a=Math.PI/180*(60*i+30);HEXPTS.push([Math.cos(a),Math.sin(a)]);}
-function expand(d){
-  if(!d||!d.layers)return d;   // v1 passthrough
+function expand(d,skipLayers){
+  const skipped=new Set(skipLayers||[]);
+  if(!d||!d.layers){
+    if(d&&skipped.size)d={...d,prisms:d.prisms.filter(pr=>!skipped.has(pr.l))};
+    return d;   // v1 passthrough
+  }
   const prisms=[];
   for(const L of d.layers){
+    if(skipped.has(L.l))continue;
     if(L.ps)for(const flat of L.ps){
       const pts=[];
       for(let i=0;i<flat.length;i+=2)pts.push([flat[i],flat[i+1]]);
@@ -496,6 +532,110 @@ function expand(d){
     }
   }
   return {w:d.w,h:d.h,zmax:d.zmax,lod:d.lod,prisms:prisms};
+}
+
+// Two workers are enough to overlap network/CPU preparation without competing
+// with the browser for every core. Typed mesh buffers are transferred, not
+// copied, back to the main thread for the final WebGL upload.
+const GEOMETRY_POOL=(function(){
+  if(!window.Worker)return null;
+  let nextId=1;const jobs=new Map(),queue=[],slots=[];
+  const workerCount=Math.max(1,Math.min(2,(navigator.hardwareConcurrency||2)-1));
+  function addSlot(){
+    let worker;try{worker=new Worker("prism-worker.js");}catch(_){return null;}
+    const slot={worker,busy:null,dead:false};slots.push(slot);
+    worker.onmessage=event=>{
+      const msg=event.data,job=jobs.get(msg.id);
+      if(job){
+        jobs.delete(msg.id);
+        if(!job.cancelled){
+          if(msg.type==="result")job.resolve(msg.prepared);
+          else job.reject(new Error(msg.message||"geometry worker failed"));
+        }
+      }
+      slot.busy=null;pump();
+    };
+    worker.onerror=event=>{
+      const job=slot.busy&&jobs.get(slot.busy);
+      if(job){jobs.delete(job.id);if(!job.cancelled)job.reject(new Error(event.message||"geometry worker unavailable"));}
+      slot.busy=null;slot.dead=true;worker.terminate();pump();
+    };
+    return slot;
+  }
+  function pump(){
+    for(const slot of slots){
+      if(slot.dead||slot.busy)continue;
+      let job;while(queue.length&&!job){const candidate=queue.shift();if(!candidate.cancelled)job=candidate;}
+      if(!job)break;
+      slot.busy=job.id;job.slot=slot;
+      slot.worker.postMessage({type:"load",id:job.id,url:job.url,
+        includePrisms:job.includePrisms,skipLayers:job.skipLayers,order:ZORDER,colors:COL});
+    }
+    if(!slots.some(slot=>!slot.dead)){
+      while(queue.length){const job=queue.shift();jobs.delete(job.id);
+        if(!job.cancelled)job.reject(new Error("geometry workers unavailable"));}
+    }
+  }
+  for(let i=0;i<workerCount;i++)addSlot();
+  if(!slots.length)return null;
+  return {load(url,includePrisms,skipLayers,priority){
+    const id=nextId++;let job;
+    const promise=new Promise((resolve,reject)=>{job={id,url,includePrisms,skipLayers,
+      priority:priority||0,resolve,reject,cancelled:false,slot:null};});
+    jobs.set(id,job);queue.push(job);queue.sort((a,b)=>b.priority-a.priority);pump();
+    return {promise,cancel(){
+      if(job.cancelled)return;job.cancelled=true;job.resolve(null);
+      if(job.slot)job.slot.worker.postMessage({type:"cancel",id});
+      else jobs.delete(id);
+    }};
+  }};
+})();
+
+const GEOMETRY_CACHE=(function(){
+  const items=new Map();let bytes=0;
+  const maxBytes=64*1024*1024,maxItems=48;
+  return {
+    get(key){const data=items.get(key);if(!data)return null;
+      items.delete(key);items.set(key,data);return data;},
+    put(key,data){
+      const size=data.byteSize||((data.tris&&data.tris.byteLength)||0)+((data.lines&&data.lines.byteLength)||0);
+      if(!size||size>maxBytes/2)return;
+      const old=items.get(key);if(old){bytes-=old.byteSize||0;items.delete(key);}
+      data.byteSize=size;data._cached=true;items.set(key,data);bytes+=size;
+      while(bytes>maxBytes||items.size>maxItems){
+        const [oldKey,evicted]=items.entries().next().value;items.delete(oldKey);
+        bytes-=evicted.byteSize||0;evicted._cached=false;evicted.tris=null;evicted.lines=null;
+      }
+    }
+  };
+})();
+
+function loadGeometry(path,includePrisms,skipLayers,priority){
+  skipLayers=skipLayers||[];
+  const url=new URL(PBASE+path,document.baseURI).href;
+  const cacheKey=skipLayers.length?path+"|"+skipLayers.join(","):null;
+  const cached=cacheKey&&GEOMETRY_CACHE.get(cacheKey);
+  if(cached)return {promise:Promise.resolve(cached),cancel(){}};
+  if(GEOMETRY_POOL){
+    const workerTask=GEOMETRY_POOL.load(url,includePrisms,skipLayers,priority);let cancelled=false;
+    return {promise:workerTask.promise.then(data=>{
+      if(data&&cacheKey)GEOMETRY_CACHE.put(cacheKey,data);return data;
+    }).catch(error=>{
+      if(cancelled)return null;
+      console.warn("geometry worker fallback:",error.message);
+      return fetch(url).then(response=>response.ok?response.json():null).then(raw=>{
+        const data=expand(raw,skipLayers);if(data){data.pins=(raw&&raw.pins)||[];
+          data.present=[...new Set(data.prisms.map(prism=>prism.l))];}
+        return data;
+      });
+    }),cancel(){cancelled=true;workerTask.cancel();}};
+  }
+  const controller=new AbortController();
+  return {promise:fetch(url,{signal:controller.signal}).then(response=>response.ok?response.json():null).then(raw=>{
+    const data=expand(raw,skipLayers);if(data){data.pins=(raw&&raw.pins)||[];
+      data.present=[...new Set(data.prisms.map(prism=>prism.l))];}
+    return data;
+  }).catch(error=>error.name==="AbortError"?null:Promise.reject(error)),cancel(){controller.abort();}};
 }
 function layerStats(d){
   const st={};
@@ -576,47 +716,51 @@ class GLView{
     this.cv=cv;this.d=data;this.o=opts||{};
     this.az=-0.6;this.el=1.0;this.zoom=1;this.off=0;this.panx=0;this.pany=0;this.hidden=new Set();this.panx=0;this.pany=0;
     if(this.o.novia)for(const L of VIAL)this.hidden.add(L);
-    this.st=layerStats(data);
+    this.st=data.stats||layerStats(data);
     this.spin=!!this.o.spin&&!REDUCED;
-    const tris=[],lines=[];this.triRange={};this.lineRange={};
-    for(const L of ZORDER){
-      const start=tris.length/9, lstart=lines.length/9;
-      for(const pr of data.prisms){
-        if(pr.l!==L)continue;
-        const col=hex2rgb(COL[L]||"#888888"),n=pr.p.length;
-        for(let i=0;i<n;i++){
-          const a=pr.p[i],b=pr.p[(i+1)%n];
-          const ex_=b[0]-a[0],ey=b[1]-a[1],em=Math.hypot(ex_,ey)||1;
-          const nx=ey/em,ny=-ex_/em;
-          // two triangles for the side quad
-          const v=[[a[0],a[1],pr.z0],[b[0],b[1],pr.z0],[b[0],b[1],pr.z1],
-                   [a[0],a[1],pr.z0],[b[0],b[1],pr.z1],[a[0],a[1],pr.z1]];
-          for(const q of v)tris.push(q[0],q[1],q[2],nx,ny,0,col[0],col[1],col[2]);
-          lines.push(a[0],a[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3,
-                     b[0],b[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3);
+    let tris=data.tris,lines=data.lines;
+    this.triRange=data.triRange||{};this.lineRange=data.lineRange||{};
+    if(!tris||!lines){
+      tris=[];lines=[];
+      for(const L of ZORDER){
+        const start=tris.length/9, lstart=lines.length/9;
+        for(const pr of data.prisms){
+          if(pr.l!==L)continue;
+          const col=hex2rgb(COL[L]||"#888888"),n=pr.p.length;
+          for(let i=0;i<n;i++){
+            const a=pr.p[i],b=pr.p[(i+1)%n];
+            const ex_=b[0]-a[0],ey=b[1]-a[1],em=Math.hypot(ex_,ey)||1;
+            const nx=ey/em,ny=-ex_/em;
+            const v=[[a[0],a[1],pr.z0],[b[0],b[1],pr.z0],[b[0],b[1],pr.z1],
+                     [a[0],a[1],pr.z0],[b[0],b[1],pr.z1],[a[0],a[1],pr.z1]];
+            for(const q of v)tris.push(q[0],q[1],q[2],nx,ny,0,col[0],col[1],col[2]);
+            lines.push(a[0],a[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3,
+                       b[0],b[1],pr.z1,0,0,1,col[0]*0.3,col[1]*0.3,col[2]*0.3);
+          }
+          for(const k of earcut(pr.p)){
+            const q=pr.p[k];tris.push(q[0],q[1],pr.z1,0,0,1,col[0],col[1],col[2]);
+          }
         }
-        const ti=earcut(pr.p);
-        for(const k of ti){
-          const q=pr.p[k];
-          tris.push(q[0],q[1],pr.z1,0,0,1,col[0],col[1],col[2]);
-        }
+        this.triRange[L]=[start,tris.length/9-start];
+        this.lineRange[L]=[lstart,lines.length/9-lstart];
       }
-      this.triRange[L]=[start,tris.length/9-start];
-      this.lineRange[L]=[lstart,lines.length/9-lstart];
+      tris=new Float32Array(tris);lines=new Float32Array(lines);
     }
     const gl=GLR.gl;
     this.vboT=gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER,this.vboT);
-    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(tris),gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER,tris,gl.STATIC_DRAW);
     this.vboL=gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER,this.vboL);
-    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(lines),gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER,lines,gl.STATIC_DRAW);
+    // GPU buffers own the mesh now; release the transferred CPU arrays.
+    if(data.tris&&!data._cached){data.tris=null;data.lines=null;}
 
     this.ptrs=new Map(); this.pinch=null; this._lastTap=0;
     this._down=e=>{
       cv.setPointerCapture(e.pointerId);
       this.ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      this.spin=false; this.userHeld=true;
+      this.spin=false;SPIN_FRAMES.delete(this);this.userHeld=true;
       if(this.ptrs.size===1){
         const now=performance.now();
         if(e.pointerType==="touch"&&now-this._lastTap<300){   // double-tap resets
@@ -686,10 +830,7 @@ class GLView{
     const dx=a[0].x-a[1].x, dy=a[0].y-a[1].y;
     return {d:Math.hypot(dx,dy),cx:(a[0].x+a[1].x)/2,cy:(a[0].y+a[1].y)/2};
   }
-  loop(){this.raf=requestAnimationFrame(t=>{
-    if(this.spin){this.az+=0.0045;this.draw();
-      if(this.o.onNav&&t-(this._ht||0)>600){this._ht=t;this.o.onNav();}
-      this.loop();}});}
+  loop(){if(this.spin)SPIN_FRAMES.add(this);}
   request(){if(this.raf2)return;this.raf2=requestAnimationFrame(()=>{this.raf2=0;this.draw();});}
   draw(){
     const d=this.d;if(!d)return;
@@ -822,6 +963,7 @@ class GLView{
   }
   dispose(){
     cancelAnimationFrame(this.raf);cancelAnimationFrame(this.raf2);cancelAnimationFrame(this.rafA);
+    SPIN_FRAMES.delete(this);
     const gl=GLR.gl;
     gl.deleteBuffer(this.vboT);gl.deleteBuffer(this.vboL);
     if(this.vboH)gl.deleteBuffer(this.vboH);
@@ -840,13 +982,13 @@ class PainterView{
     this.cv=cv;this.d=data;this.o=opts||{};
     this.az=-0.6;this.el=1.0;this.zoom=1;this.off=0;this.panx=0;this.pany=0;this.hidden=new Set();this.panx=0;this.pany=0;
     if(this.o.novia)for(const L of VIAL)this.hidden.add(L);
-    this.st=layerStats(data);
+    this.st=data.stats||layerStats(data);
     this.spin=!!this.o.spin&&!REDUCED;this.raf=0;this.last=0;
     this.ptrs=new Map(); this.pinch=null; this._lastTap=0;
     this._down=e=>{
       cv.setPointerCapture(e.pointerId);
       this.ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-      this.spin=false; this.userHeld=true;
+      this.spin=false;SPIN_FRAMES.delete(this);this.userHeld=true;
       if(this.ptrs.size===1){
         const now=performance.now();
         if(e.pointerType==="touch"&&now-this._lastTap<300){
@@ -898,10 +1040,7 @@ class PainterView{
     const dx=a[0].x-a[1].x, dy=a[0].y-a[1].y;
     return {d:Math.hypot(dx,dy),cx:(a[0].x+a[1].x)/2,cy:(a[0].y+a[1].y)/2};
   }
-  loop(){this.raf=requestAnimationFrame(t=>{
-    if(this.spin){this.az+=0.0045;this.draw();
-      if(this.o.onNav&&t-(this._ht||0)>600){this._ht=t;this.o.onNav();}
-      this.loop();}});}
+  loop(){if(this.spin)SPIN_FRAMES.add(this);}
   request(){if(this.raf2)return;this.raf2=requestAnimationFrame(()=>{this.raf2=0;this.draw();});}
   draw(){
     const cv=this.cv,d=this.d,dpr=window.devicePixelRatio||1;
@@ -1005,7 +1144,8 @@ class PainterView{
   }
   clearFocus(){this.anim=null;this.focus=null;this.flashUntil=0;this.hl=null;this.request();}
   dispose(){
-    cancelAnimationFrame(this.raf);cancelAnimationFrame(this.raf2);
+    cancelAnimationFrame(this.raf);cancelAnimationFrame(this.raf2);cancelAnimationFrame(this.rafA);
+    SPIN_FRAMES.delete(this);
     const cv=this.cv;
     cv.removeEventListener("pointerdown",this._down);
     cv.removeEventListener("pointermove",this._move);
@@ -1029,8 +1169,10 @@ const ACTIVE=new Set();
 function setBadge(){
   const b=document.getElementById("rbadge");
   if(!b)return;
-  if(GLR){b.textContent="webgl2 on";b.className="rbadge gl";
-    b.title="Hardware rendering: one shared depth-buffered WebGL2 context, blitted per card";}
+  if(GLR){b.textContent=GEOMETRY_POOL?"webgl2 + workers":"webgl2 on";b.className="rbadge gl";
+    b.title=GEOMETRY_POOL
+      ? "Worker-prepared meshes; one shared depth-buffered WebGL2 context; budgeted card animation"
+      : "Hardware rendering: one shared depth-buffered WebGL2 context, blitted per card";}
   else{b.textContent="webgl2 off";b.className="rbadge cpu";
     b.title="WebGL2 unavailable \u2014 software painter's-algorithm renderer";}
 }
@@ -1049,24 +1191,31 @@ const io = new IntersectionObserver(es=>{
   for(const e of es){ const cv=e.target;
     if(e.isIntersecting){
       if(cv._pv||cv._loading)continue;
-      cv._loading=true;
-      fetch(PBASE+cv.dataset.p).then(r=>r.ok?r.json():null).then(raw=>{
-        const d=expand(raw);
-        cv._loading=false;
+      const rect=e.boundingClientRect;
+      const visible=rect.bottom>0&&rect.top<innerHeight;
+      const priority=visible?1000:Math.max(1,200-Math.abs(rect.top-innerHeight/2));
+      cv._loading=true;const task=loadGeometry(cv.dataset.p,!GLR,VIAL,priority);cv._load=task;
+      task.promise.then(d=>{
+        if(cv._load!==task)return;
+        cv._loading=false;cv._load=null;
         if(!d){cv.closest(".thumb").innerHTML='<div class="pending">no geometry</div>';return;}
         if(cv.isConnected){
-          const v=new PrismView(cv,d,{spin:true,novia:true});
+          const v=new PrismView(cv,d,{spin:true,novia:true,fps:20});
           cv._pv=v; ACTIVE.add(v);
           cv.closest(".thumb").classList.add("loaded");
-          cv.addEventListener("pointerenter",()=>{v.spin=false;});
+          cv.addEventListener("pointerenter",()=>{v.spin=false;SPIN_FRAMES.delete(v);});
           cv.addEventListener("pointerleave",()=>{
             if(!REDUCED&&!v.userHeld&&!dlg.open&&v.d){v.spin=true;v.loop();}});
         }
-      }).catch(()=>cv._loading=false);
-    } else if(cv._pv){ ACTIVE.delete(cv._pv); cv._pv.dispose(); cv._pv=null;
-      cv.closest(".thumb").classList.remove("loaded"); }
+      }).catch(error=>{if(cv._load===task){cv._loading=false;cv._load=null;}
+        console.warn("geometry load failed:",error);});
+    } else {
+      if(cv._load){cv._load.cancel();cv._load=null;cv._loading=false;}
+      if(cv._pv){ACTIVE.delete(cv._pv);cv._pv.dispose();cv._pv=null;
+        cv.closest(".thumb").classList.remove("loaded");}
+    }
   }
-},{rootMargin:"250px"});
+},{rootMargin:"180px"});
 
 function render(){
   const t=q.value.trim().toLowerCase(), L=lib.value, K=kind.value;
@@ -1076,6 +1225,7 @@ function render(){
      Object.values(r.fn||{}).join(" ").toLowerCase().includes(t)));
   count.textContent = sel.length + " of " + CELLS.length;
   grid.querySelectorAll("canvas[data-p]").forEach(cv=>{io.unobserve(cv);
+    if(cv._load){cv._load.cancel();cv._load=null;}
     if(cv._pv){ACTIVE.delete(cv._pv);cv._pv.dispose();}});
   grid.innerHTML="";
   const frag=document.createDocumentFragment();
@@ -1110,7 +1260,7 @@ const dlg=document.getElementById("dlg"), mv=document.getElementById("mv"),
       v3x=document.getElementById("v3x"), v3lod=document.getElementById("v3lod"),
       v3name=document.getElementById("v3name"), v3xv=document.getElementById("v3xv"),
       v3reset=document.getElementById("v3reset"), v3lib=document.getElementById("v3lib");
-let modalView=null;
+let modalView=null,modalLoad=null;
 function pinGroup(label,pins,klass){
   if(!pins || !pins.length) return "";
   return '<div class="pin-group '+klass+'"><div class="pin-title"><span>'+label+
@@ -1134,8 +1284,9 @@ function writeHash(){
 }
 function open_(r,hp){
   if(modalView){modalView.dispose();modalView=null;}
+  if(modalLoad){modalLoad.cancel();modalLoad=null;}
   curCell=r.n;
-  for(const v of ACTIVE){v._paused=v.spin;v.spin=false;}
+  for(const v of ACTIVE){v._paused=v.spin;v.spin=false;SPIN_FRAMES.delete(v);}
   v3legend.innerHTML=""; v3lod.textContent="loading\u2026";
   const _px=(hp&&hp.get("x"))||new URLSearchParams(location.search).get("x");
   v3x.value=_px?Math.min(5,Math.max(0,+_px)):0;
@@ -1145,23 +1296,18 @@ function open_(r,hp){
   if(!loadEl){loadEl=document.createElement("div");loadEl.className="v3loading";cwrap.appendChild(loadEl);}
   loadEl.textContent="loading geometry\u2026";loadEl.style.display="";
   const clearLoading=()=>{if(loadEl)loadEl.style.display="none";};
-  // defer the fetch+build so the modal chrome paints first and the UI stays live
-  requestAnimationFrame(()=>{
-  fetch(PBASE+r.n+".json").then(x=>x.ok?x.json():null).then(raw=>{
-    if(!dlg.open)return;
-    // yield once more so the browser can paint before the heavy expand/build
-    requestAnimationFrame(()=>{
-    if(!dlg.open)return;
-    const d=expand(raw);
-    if(!d)return;
-    modalView=new PrismView(mv,d,{spin:true,wheel:true,onNav:queueHash});
+  const task=loadGeometry(r.n+".json",!GLR,[],10000);modalLoad=task;
+  task.promise.then(d=>{
+    if(modalLoad!==task||!dlg.open||!d)return;
+    modalLoad=null;
+    modalView=new PrismView(mv,d,{spin:true,wheel:true,onNav:queueHash,fps:60});
     clearLoading();
     if(hp){
       if(hp.get("az"))modalView.az=+hp.get("az");
       if(hp.get("el"))modalView.el=Math.min(1.5,Math.max(0.1,+hp.get("el")));
       if(hp.get("zm"))modalView.zoom=Math.min(400,Math.max(0.35,+hp.get("zm")));
       if(hp.get("h"))for(const L of hp.get("h").split(",").filter(x=>COL[x]))modalView.hidden.add(L);
-      if(hp.get("spin")==="0")modalView.spin=false;
+      if(hp.get("spin")==="0"){modalView.spin=false;SPIN_FRAMES.delete(modalView);}
     }
     modalView.off=+v3x.value;
     buildChips(d);
@@ -1169,7 +1315,7 @@ function open_(r,hp){
     const oreq=modalView.request.bind(modalView);
     modalView.request=function(){oreq();queueHash();};
     const pmap={};
-    for(const pp of (raw&&raw.pins)||[])pmap[pp.n]=pp;
+    for(const pp of d.pins||[])pmap[pp.n]=pp;
     info.querySelectorAll("code[data-pin]").forEach(el=>{
       const pp=pmap[el.dataset.pin];
       if(!pp)return;
@@ -1186,8 +1332,10 @@ function open_(r,hp){
       ? "LOD: "+d.lod.shown+" of "+d.lod.total+" shapes (largest kept)" : "";
     if(d.lod && d.lod.vias) lodTxt += (lodTxt?" \u00b7 ":"")+"vias sampled "+d.lod.vias;
     v3lod.textContent = lodTxt;
-    });
-  });
+  }).catch(error=>{
+    if(modalLoad!==task)return;modalLoad=null;
+    loadEl.textContent="geometry failed to load";v3lod.textContent="";
+    console.warn("modal geometry load failed:",error);
   });
   let fn="";
   for(const [p,e] of Object.entries(r.fn||{})) fn+='<div><i>'+p+' =</i> '+e+'</div>';
@@ -1220,7 +1368,7 @@ const v3spin=document.getElementById("v3spin"), v3iso=document.getElementById("v
 function updSpin(){v3spin.textContent=(modalView&&modalView.spin)?"pause":"spin";}
 function buildChips(d){
   v3legend.innerHTML="";
-  const present=new Set(d.prisms.map(pr=>pr.l));
+  const present=new Set(d.present||(d.prisms||[]).map(pr=>pr.l));
   const order=[...ZORDER].reverse().filter(l=>present.has(l)); // top of stack first
   const chips={};
   function sync(){
@@ -1271,6 +1419,7 @@ v3iso.addEventListener("click",()=>{if(modalView){modalView.az=-0.6;modalView.el
 v3top.addEventListener("click",()=>{if(modalView){modalView.az=0;modalView.el=1.5;modalView.request();}});
 mv.addEventListener("pointerdown",()=>setTimeout(updSpin,0));
 function close_(){ curPin=null; history.replaceState(null,"",location.pathname+location.search); dlg.close();
+  if(modalLoad){modalLoad.cancel();modalLoad=null;}
   if(modalView){modalView.dispose();modalView=null;}
   for(const v of ACTIVE){if(v._paused&&!REDUCED&&v.d){v.spin=true;v.loop();}v._paused=false;} }
 document.getElementById("x").addEventListener("click",close_);
