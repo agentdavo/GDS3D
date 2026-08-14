@@ -879,11 +879,6 @@ function render(){
       '<div class="csource">GDS from gf180mcuD/<br><span>'+r.g+'</span></div></div>';
     b.addEventListener("click",e=>{ if(!e.target.closest("canvas")||!dragging) open_(r); });
     card.appendChild(b);
-    const actions=document.createElement("div"); actions.className="card-actions";
-    const dl=document.createElement("a"); dl.className="card-download";
-    dl.href=PBASE+r.n+".json"; dl.download=r.s+".json";
-    dl.textContent="↓ geometry JSON";
-    actions.appendChild(dl); card.appendChild(actions);
     frag.appendChild(card);
   }
   grid.appendChild(frag);
@@ -905,7 +900,7 @@ function pinGroup(label,pins,klass){
     '</span><b>'+pins.length+'</b></div><div class="pins">'+
     pins.map(p=>'<code data-pin="'+p+'">'+p+'</code>').join("")+'</div></div>';
 }
-let curCell=null, hashT=0;
+let curCell=null,curPin=null,hashT=0;
 function queueHash(){clearTimeout(hashT);hashT=setTimeout(writeHash,120);writeHash();}
 function writeHash(){
   if(!dlg.open||!modalView||!curCell)return;

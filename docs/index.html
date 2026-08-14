@@ -66,11 +66,6 @@ input[type=search]:focus,select:focus{outline:2px solid var(--accent);outline-of
 .csource{font-family:var(--mono);font-size:10px;color:var(--dim);line-height:1.4;margin-top:8px;
   padding-top:7px;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .csource span{color:var(--fg)}
-.card-actions{display:flex;justify-content:flex-end;border-top:1px solid var(--line);padding:5px 9px}
-.card-download{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-decoration:none;
-  border-radius:4px;padding:2px 5px}
-.card-download:hover{color:var(--accent);background:var(--panel2)}
-.card-download:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 dialog{border:none;padding:0;background:transparent;width:100%;height:100%;max-width:none;
   max-height:none;margin:0;color:var(--fg)}
 dialog::backdrop{background:rgba(5,6,9,.93)}
@@ -299,9 +294,6 @@ input[type=search]:focus,select:focus{outline:2px solid color-mix(in srgb,var(--
 .cfam{font-size:.82rem;margin-top:.2rem}
 .cmeta{font-size:.7rem;margin-top:.35rem}
 .csource{font-size:.64rem;margin-top:.55rem;padding-top:.5rem}
-.card-actions{border-color:var(--line);padding:.35rem .65rem}
-.card-download{font-size:.64rem;border-radius:5px;padding:.12rem .4rem}
-.card-download:hover{background:var(--panel2)}
 
 button,.v3btn,.x{border-color:var(--line);border-radius:6px;background:transparent;color:var(--fg)}
 .v3btn{font-family:var(--sans);font-size:.78rem;height:30px;padding:.25rem .7rem}
@@ -423,6 +415,8 @@ const SPIN_FRAMES=(function(){
     raf=0;const started=performance.now();let drew=0;
     for(const view of [...views]){
       if(!view.spin||!view.d||!view.cv.isConnected){views.delete(view);continue;}
+      const rect=view.cv.getBoundingClientRect();
+      if(rect.bottom<=0||rect.top>=innerHeight||rect.right<=0||rect.left>=innerWidth)continue;
       const fps=view.o.fps||20;
       if(now<(view._nextSpin||0))continue;
       // Leave roughly half the frame to input, layout and paint. If one model
@@ -1166,6 +1160,40 @@ const grid=document.getElementById("grid"), q=document.getElementById("q"),
 // Load geometry only while a card is near the viewport; drop it when it
 // scrolls away — same memory strategy as the video edition.
 const ACTIVE=new Set();
+const PARKED=new Map(),MAX_PARKED=4;
+function parkCardView(cv){
+  const view=cv._pv;if(!view||cv._parked)return;
+  ACTIVE.delete(view);view.spin=false;SPIN_FRAMES.delete(view);
+  cv._parked=true;PARKED.set(cv,view);
+  while(PARKED.size>MAX_PARKED){
+    const [oldCanvas,oldView]=PARKED.entries().next().value;PARKED.delete(oldCanvas);
+    oldCanvas._parked=false;oldCanvas._pv=null;oldView.dispose();
+    const thumb=oldCanvas.closest(".thumb");if(thumb)thumb.classList.remove("loaded");
+  }
+}
+function restoreCardView(cv){
+  if(!cv._parked||!cv._pv)return false;
+  PARKED.delete(cv);cv._parked=false;ACTIVE.add(cv._pv);syncCardSpins();return true;
+}
+let CARD_HOVER=false;
+function syncCardSpins(){
+  for(const view of ACTIVE){
+    const shouldSpin=!REDUCED&&!CARD_HOVER&&!dlg.open&&!view.userHeld&&view.d;
+    if(shouldSpin&&!view.spin){view.spin=true;view.loop();}
+    else if(!shouldSpin&&view.spin){view.spin=false;SPIN_FRAMES.delete(view);}
+  }
+}
+function setCardHover(value){
+  if(CARD_HOVER===value)return;CARD_HOVER=value;syncCardSpins();
+}
+grid.addEventListener("pointerover",event=>{
+  if(event.target.closest(".card"))setCardHover(true);
+});
+grid.addEventListener("pointerout",event=>{
+  const from=event.target.closest(".card");
+  const to=event.relatedTarget&&event.relatedTarget.closest&&event.relatedTarget.closest(".card");
+  if(from&&!to)setCardHover(false);
+});
 function setBadge(){
   const b=document.getElementById("rbadge");
   if(!b)return;
@@ -1183,6 +1211,8 @@ if(GLR){
     const b=document.getElementById("rbadge");
     if(b){b.textContent="webgl2 \u2026";b.className="rbadge cpu";}
     for(const v of [...ACTIVE]){v.dispose();ACTIVE.delete(v);}
+    for(const [cv,v] of PARKED){v.dispose();cv._pv=null;cv._parked=false;}
+    PARKED.clear();
     if(modalView){modalView.dispose();modalView=null;}
   });
   GLR.cv.addEventListener("webglcontextrestored",()=>{GLR.reinit();setBadge();render();});
@@ -1190,6 +1220,7 @@ if(GLR){
 const io = new IntersectionObserver(es=>{
   for(const e of es){ const cv=e.target;
     if(e.isIntersecting){
+      if(restoreCardView(cv))continue;
       if(cv._pv||cv._loading)continue;
       const rect=e.boundingClientRect;
       const visible=rect.bottom>0&&rect.top<innerHeight;
@@ -1203,16 +1234,13 @@ const io = new IntersectionObserver(es=>{
           const v=new PrismView(cv,d,{spin:true,novia:true,fps:20});
           cv._pv=v; ACTIVE.add(v);
           cv.closest(".thumb").classList.add("loaded");
-          cv.addEventListener("pointerenter",()=>{v.spin=false;SPIN_FRAMES.delete(v);});
-          cv.addEventListener("pointerleave",()=>{
-            if(!REDUCED&&!v.userHeld&&!dlg.open&&v.d){v.spin=true;v.loop();}});
+          syncCardSpins();
         }
       }).catch(error=>{if(cv._load===task){cv._loading=false;cv._load=null;}
         console.warn("geometry load failed:",error);});
     } else {
       if(cv._load){cv._load.cancel();cv._load=null;cv._loading=false;}
-      if(cv._pv){ACTIVE.delete(cv._pv);cv._pv.dispose();cv._pv=null;
-        cv.closest(".thumb").classList.remove("loaded");}
+      if(cv._pv)parkCardView(cv);
     }
   }
 },{rootMargin:"180px"});
@@ -1226,7 +1254,7 @@ function render(){
   count.textContent = sel.length + " of " + CELLS.length;
   grid.querySelectorAll("canvas[data-p]").forEach(cv=>{io.unobserve(cv);
     if(cv._load){cv._load.cancel();cv._load=null;}
-    if(cv._pv){ACTIVE.delete(cv._pv);cv._pv.dispose();}});
+    if(cv._pv){PARKED.delete(cv);ACTIVE.delete(cv._pv);cv._pv.dispose();}});
   grid.innerHTML="";
   const frag=document.createDocumentFragment();
   for(const r of sel){
@@ -1241,11 +1269,6 @@ function render(){
       '<div class="csource">GDS from gf180mcuD/<br><span>'+r.g+'</span></div></div>';
     b.addEventListener("click",e=>{ if(!e.target.closest("canvas")||!dragging) open_(r); });
     card.appendChild(b);
-    const actions=document.createElement("div"); actions.className="card-actions";
-    const dl=document.createElement("a"); dl.className="card-download";
-    dl.href=PBASE+r.n+".json"; dl.download=r.s+".json";
-    dl.textContent="↓ geometry JSON";
-    actions.appendChild(dl); card.appendChild(actions);
     frag.appendChild(card);
   }
   grid.appendChild(frag);
@@ -1267,7 +1290,7 @@ function pinGroup(label,pins,klass){
     '</span><b>'+pins.length+'</b></div><div class="pins">'+
     pins.map(p=>'<code data-pin="'+p+'">'+p+'</code>').join("")+'</div></div>';
 }
-let curCell=null, hashT=0;
+let curCell=null,curPin=null,hashT=0;
 function queueHash(){clearTimeout(hashT);hashT=setTimeout(writeHash,120);writeHash();}
 function writeHash(){
   if(!dlg.open||!modalView||!curCell)return;
@@ -1286,7 +1309,7 @@ function open_(r,hp){
   if(modalView){modalView.dispose();modalView=null;}
   if(modalLoad){modalLoad.cancel();modalLoad=null;}
   curCell=r.n;
-  for(const v of ACTIVE){v._paused=v.spin;v.spin=false;SPIN_FRAMES.delete(v);}
+  for(const v of ACTIVE){v.spin=false;SPIN_FRAMES.delete(v);}
   v3legend.innerHTML=""; v3lod.textContent="loading\u2026";
   const _px=(hp&&hp.get("x"))||new URLSearchParams(location.search).get("x");
   v3x.value=_px?Math.min(5,Math.max(0,+_px)):0;
@@ -1421,7 +1444,7 @@ mv.addEventListener("pointerdown",()=>setTimeout(updSpin,0));
 function close_(){ curPin=null; history.replaceState(null,"",location.pathname+location.search); dlg.close();
   if(modalLoad){modalLoad.cancel();modalLoad=null;}
   if(modalView){modalView.dispose();modalView=null;}
-  for(const v of ACTIVE){if(v._paused&&!REDUCED&&v.d){v.spin=true;v.loop();}v._paused=false;} }
+  syncCardSpins(); }
 document.getElementById("x").addEventListener("click",close_);
 dlg.addEventListener("click",e=>{ if(e.target===dlg) close_(); });
 dlg.addEventListener("cancel",e=>{ e.preventDefault(); close_(); });
