@@ -525,6 +525,16 @@ function pinBox(pin,off){
   return {box:{cx:(minx+maxx)/2,cy:(miny+maxy)/2,cz:(zb+zt)/2*Z_COMPACT+li*off,
     Rad:Math.max(1.2,Math.hypot(maxx-minx,maxy-miny)*1.6),Zh:Math.max(1.2,(zt-zb)*Z_COMPACT)},li:li};
 }
+function pinHighlightShapes(pin,modelRad){
+  // IO and macro pins can be sub-pixel slivers at whole-cell fit. Add a
+  // model-relative halo so their locator remains visible without moving the camera.
+  const fitPad=Math.min(1.2,Math.max(0.08,(modelRad||1)*0.006));
+  return (pin.s||[]).map(r=>{
+    const shapePad=Math.min(0.35,0.08*Math.min(r[3]-r[1],r[4]-r[2]));
+    const g=Math.max(fitPad,shapePad);
+    return [r[0],r[1]-g,r[2]-g,r[3]+g,r[4]+g];
+  });
+}
 const HEXPTS=[];for(let i=0;i<6;i++){const a=Math.PI/180*(60*i+30);HEXPTS.push([Math.cos(a),Math.sin(a)]);}
 function expand(d,skipLayers){
   const skipped=new Set(skipLayers||[]);
@@ -925,12 +935,16 @@ class GLView{
     }
     if(this.vboH&&(this.focus||this.anim||_tnow<(this.flashUntil||0))){
       const pulse=_tnow<(this.flashUntil||0)?1.05+0.55*Math.sin(_tnow/90):1.18;
+      // Locator geometry is an annotation: render it through upper metal so a
+      // buried Metal1/Metal2 IO pin cannot disappear behind the visible stack.
+      gl.disable(gl.DEPTH_TEST);
       gl.uniform1f(R.uBright,pulse);
       bind(this.vboH);
       gl.uniform1f(R.uLine,0.001);
       gl.uniform1f(R.uZoff,(this.hlLi||0)*off);
       gl.drawArrays(gl.TRIANGLES,0,this.hlN);
       gl.uniform1f(R.uBright,1);
+      gl.enable(gl.DEPTH_TEST);
     }
     gl.disable(gl.SCISSOR_TEST);
     const ctx=cv.getContext("2d");
@@ -948,10 +962,9 @@ class GLView{
     const pb=pinBox(pin,this.off);
     if(!pb)return;
     const tris=[];
-    for(const r of pin.s){
+    for(const r of pinHighlightShapes(pin,this._fb&&this._fb.Rad)){
       const z=PIN_Z[r[0]];if(!z)continue;
-      const g=Math.max(0.05,Math.min(0.35,0.08*Math.min(r[3]-r[1],r[4]-r[2])));
-      const x0=r[1]-g,y0=r[2]-g,x1=r[3]+g,y1=r[4]+g;
+      const x0=r[1],y0=r[2],x1=r[3],y1=r[4];
       const zl=z[0]-0.03,zh=z[1]+0.03,C=[1,0.78,0.12];
       const q=(p1,p2,p3,p4,nx,ny,nz)=>{for(const v of[p1,p2,p3,p1,p3,p4])tris.push(v[0],v[1],v[2],nx,ny,nz,C[0],C[1],C[2]);};
       q([x0,y0,zh],[x1,y0,zh],[x1,y1,zh],[x0,y1,zh],0,0,1);
@@ -1090,13 +1103,14 @@ class PainterView{
     const cx=fb.cx,cy=fb.cy,cz=fb.cz,Rad=fb.Rad,Zh=fb.Zh;
     const R3=Math.hypot(Rad,Zh);
     const s=Math.min(W,H)/(2*R3*1.05)*this.zoom;   // sphere fit: angle-independent, CAD-stable
-    const faces=[];
+    const faces=[],highlights=[];
     if(this.hl&&(this.focus||this.anim||_tnow<(this.flashUntil||0))){
       const a=_tnow<(this.flashUntil||0)?0.5+0.35*Math.sin(_tnow/90):0.65;
       for(const r of this.hl){
         const z=PIN_Z[r[0]];if(!z)continue;
         const li=ZORDER.indexOf(r[0]);
-        faces.push({hl:!0,a:a,p:[[r[1],r[2]],[r[3],r[2]],[r[3],r[4]],[r[1],r[4]]],z:z[1]*Z_COMPACT+li*off+0.04});
+        highlights.push({a:a,p:[[r[1],r[2]],[r[3],r[2]],[r[3],r[4]],[r[1],r[4]]],
+          z:z[1]*Z_COMPACT+Math.max(0,li)*off+0.04});
       }
     }
     for(const pr of d.prisms){
@@ -1129,13 +1143,12 @@ class PainterView{
       ctx.closePath();ctx.fillStyle=f.c;ctx.fill();
       ctx.strokeStyle="rgba(0,0,0,.22)";ctx.stroke();
     }
-    for(const f of faces){
-      if(!f.hl)continue;
+    for(const f of highlights){
       ctx.beginPath();
       let first=!0;
       for(const pt of f.p){
         const x=pt[0]-cx,y=pt[1]-cy,rx=x*ca-y*sa,ry=x*sa+y*ca;
-        const sx2=W/2+rx*s,sy2=H/2+(ry*se-(f.z-cz)*ce)*s;
+        const sx2=W/2+rx*s+(this.panx||0),sy2=H/2+(ry*se-(f.z-cz)*ce)*s+(this.pany||0);
         if(first){ctx.moveTo(sx2,sy2);first=!1;}else ctx.lineTo(sx2,sy2);
       }
       ctx.closePath();
@@ -1151,7 +1164,7 @@ class PainterView{
   flyToPin(pin){
     const pb=pinBox(pin,this.off);
     if(!pb)return;
-    this.hl=pin.s;this.hlLi=pb.li;
+    this.hl=pinHighlightShapes(pin,this._fb&&this._fb.Rad);this.hlLi=pb.li;
     this.flashUntil=performance.now()+3200;
     this.animLoop();
   }
